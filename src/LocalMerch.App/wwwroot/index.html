@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LocalMerch — Administration</title>
+<script>
+  // Thème appliqué avant l'affichage (pas de flash) : choix mémorisé, sinon celui du système.
+  (() => {
+    const system = matchMedia('(prefers-color-scheme: dark)');
+    const saved = () => { try { return localStorage.getItem('theme'); } catch { return null; } };
+    const apply = () => { document.documentElement.dataset.theme = saved() || (system.matches ? 'dark' : 'light'); };
+    apply();
+    system.addEventListener('change', apply);
+  })();
+</script>
 <style>
   :root {
     --bg: #f4f6f9; --card: #fff; --fg: #1d2330; --muted: #667085; --line: #e4e7ec; --line-strong: #d0d5dd;
@@ -15,15 +25,14 @@
     --radius: 12px;
     color-scheme: light;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0e131a; --card: #161d27; --fg: #e6e9ef; --muted: #98a2b3; --line: #243041; --line-strong: #34425a;
-      --accent: #5b93ff; --accent-hover: #78a7ff; --accent-soft: #1a2944; --accent-fg: #0b1220;
-      --danger: #ff7070; --danger-soft: #3a1d22; --success: #4ade80; --success-soft: #142c1d;
-      --warn: #fbbf24; --warn-soft: #33290f; --info: #38bdf8; --info-soft: #11293a; --neutral-soft: #1e2734;
-      --shadow: 0 1px 2px rgb(0 0 0 / .4); --shadow-lg: 0 16px 40px rgb(0 0 0 / .55);
-      color-scheme: dark;
-    }
+  /* Thème sombre : data-theme est posé sur <html> par le script du <head>. */
+  :root[data-theme="dark"] {
+    --bg: #0e131a; --card: #161d27; --fg: #e6e9ef; --muted: #98a2b3; --line: #243041; --line-strong: #34425a;
+    --accent: #5b93ff; --accent-hover: #78a7ff; --accent-soft: #1a2944; --accent-fg: #0b1220;
+    --danger: #ff7070; --danger-soft: #3a1d22; --success: #4ade80; --success-soft: #142c1d;
+    --warn: #fbbf24; --warn-soft: #33290f; --info: #38bdf8; --info-soft: #11293a; --neutral-soft: #1e2734;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4); --shadow-lg: 0 16px 40px rgb(0 0 0 / .55);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg);
@@ -43,6 +52,8 @@
   .brand { display: flex; align-items: center; gap: 10px; padding: 16px 14px; min-height: 64px; border-bottom: 1px solid var(--line); }
   .brand img { max-height: 32px; max-width: 100%; }
   .brand strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand .icon-btn { margin-left: auto; flex-shrink: 0; border-color: transparent; color: var(--muted); }
+  .brand .icon-btn:hover { color: var(--fg); }
   aside nav { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
   .side-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: auto; border: 0; background: none; padding: 8px 10px;
     border-radius: 8px; cursor: pointer; font: inherit; font-weight: 500; color: var(--muted); text-align: left; white-space: nowrap; }
@@ -50,15 +61,19 @@
   .side-btn.active, .side-btn.active:hover { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .side-btn svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .side-foot { border-top: 1px solid var(--line); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
-  #me { padding: 4px 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #account .label { overflow: hidden; text-overflow: ellipsis; }
+  dl.profile { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0 0; }
+  dl.profile dt { color: var(--muted); font-weight: 500; }
+  dl.profile dd { margin: 0; }
   .side-section { margin: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
     color: var(--muted); white-space: nowrap; }
   .side-section:first-child { margin-top: 6px; }
   aside.collapsed .side-section { font-size: 0; margin: 8px 6px; border-top: 1px solid var(--line); }
   aside.collapsed .side-section:first-child { border-top: 0; margin: 0; }
-  aside.collapsed .label, aside.collapsed .brand strong, aside.collapsed #me { display: none; }
+  aside.collapsed .label, aside.collapsed .brand strong { display: none; }
   aside.collapsed .side-btn { justify-content: center; padding: 8px 0; }
-  aside.collapsed .brand { justify-content: center; padding: 16px 4px; }
+  aside.collapsed .brand { flex-direction: column; justify-content: center; gap: 8px; padding: 12px 4px; }
+  aside.collapsed .brand .icon-btn { margin: 0; }
   main { flex: 1; min-width: 0; padding: 28px 32px 48px; max-width: 1240px; }
   /* Petit écran : barre toujours étroite, dépliée par-dessus le contenu. */
   @media (max-width: 700px) {
@@ -193,10 +208,11 @@
 <div id="app" class="hidden">
   <div class="layout">
     <aside id="sidebar">
-      <div class="brand"><img id="header-logo" class="hidden" alt=""><strong id="header-title">LocalMerch</strong></div>
+      <div class="brand"><img id="header-logo" class="hidden" alt=""><strong id="header-title">LocalMerch</strong>
+        <button id="theme" type="button" class="icon-btn"></button></div>
       <nav id="nav" aria-label="Menu principal"></nav>
       <div class="side-foot">
-        <span id="me" class="muted"></span>
+        <button id="account" class="side-btn"></button>
         <button id="logout" class="side-btn" title="Déconnexion"></button>
         <button id="collapse" class="side-btn" aria-controls="sidebar"></button>
       </div>
@@ -685,6 +701,9 @@ const icons = {
   config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   collapse: '<path d="M15 6l-6 6 6 6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   expand: '<path d="M9 6l6 6-6 6"/>',
 };
 const icon = name => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`; return t.content.firstChild; };
@@ -711,6 +730,55 @@ $('#collapse').addEventListener('click', () => {
 $('#logout').append(icon('logout'), h('span', { className: 'label' }, 'Déconnexion'));
 applyCollapse();
 
+// Bouton clair / sombre : le choix est mémorisé et prime sur le réglage du système.
+function renderThemeButton() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const label = dark ? 'Passer en mode clair' : 'Passer en mode sombre';
+  $('#theme').replaceChildren(icon(dark ? 'sun' : 'moon'));
+  $('#theme').title = label;
+  $('#theme').setAttribute('aria-label', label);
+}
+$('#theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch {}
+  renderThemeButton();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderThemeButton);
+renderThemeButton();
+
+async function accountView() {
+  const input = (name, autocomplete) => h('input', { type: 'password', name, required: true, autocomplete,
+    minLength: name === 'current' ? undefined : 8 });
+  const form = h('form', { className: 'grid', style: 'max-width:560px; margin-top:12px' },
+    h('label', {}, 'Mot de passe actuel'), input('current', 'current-password'),
+    h('label', {}, 'Nouveau mot de passe'), input('next', 'new-password'),
+    h('label', {}, 'Confirmation'), input('confirm', 'new-password'),
+    h('div', { className: 'actions' }, h('button', { className: 'primary' }, 'Changer le mot de passe')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (form.next.value !== form.confirm.value) return toast('La confirmation ne correspond pas au nouveau mot de passe.', 'danger');
+    await api('me/password', 'PUT', { current: form.current.value, next: form.next.value });
+    form.reset();
+    toast('Mot de passe modifié.');
+  });
+  const tone = { Write: 'success', Read: 'info', None: '' };
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Mon compte')),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Profil'),
+      h('dl', { className: 'profile' },
+        h('dt', {}, 'Nom'), h('dd', {}, me.name),
+        h('dt', {}, 'Identifiant'), h('dd', {}, me.login),
+        h('dt', {}, 'Rôle'), h('dd', {}, badge(L[me.role], me.role === 'Admin' ? 'info' : '')))),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Mot de passe'),
+      h('p', { className: 'muted' }, '8 caractères minimum.'), form),
+    h('h3', { className: 'section-title' }, 'Mes droits'),
+    me.role === 'Admin'
+      ? h('p', { className: 'muted' }, 'Administrateur : accès complet à toutes les pages.')
+      : table([['Page', k => allViews[k][0]], ['Droit', k => badge(L[me.access[k]], tone[me.access[k]])]], businessPages),
+  ];
+}
+
 // [libellé, écran, réservé aux administrateurs]
 const allViews = {
   keys: ['Touches', keysView], products: ['Produits', () => listView('products')], suppliers: ['Fournisseurs', () => listView('suppliers')],
@@ -718,6 +786,8 @@ const allViews = {
   stock: ['Stock', stockView], sales: ['Ventes', salesView],
   users: ['Utilisateurs', () => listView('users'), true], terminal: ['TPE', terminalView, true], config: ['Configuration', configView, true],
 };
+// Hors menu (bouton en bas de la barre latérale), ouvert à tout utilisateur connecté.
+const accountPage = ['Mon compte', accountView];
 // Menu par catégorie ; une catégorie sans écran autorisé n'est pas affichée.
 const sections = [
   ['Caisse', ['keys', 'sales']],
@@ -742,6 +812,8 @@ async function render() {
       return b;
     })];
   }));
+  $('#account').classList.toggle('active', current === 'account');
+  $('#account').toggleAttribute('aria-current', current === 'account');
   await loadLookups();
   $('#view').replaceChildren(...[await views[current][1]()].flat(Infinity).filter(x => x != null && x !== false));
 }
@@ -765,21 +837,30 @@ $('#login').addEventListener('submit', async e => {
   e.target.reset();
   start();
 });
+$('#account').addEventListener('click', () => {
+  current = 'account'; location.hash = 'account';
+  if (narrow() && !collapsed) { collapsed = true; applyCollapse(); }
+  render();
+});
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); });
 
 async function start() {
   me = await api('me');
-  $('#me').textContent = `${me.name} (${L[me.role]})`;
+  $('#account').replaceChildren(icon('account'), h('span', { className: 'label' }, me.name));
+  $('#account').title = `Mon compte — ${me.name} (${L[me.role]})`;
   views = Object.fromEntries(Object.entries(allViews).filter(([k, [, , adminOnly]]) =>
     adminOnly ? me.role === 'Admin' : can(k, 'Read')));
+  const pages = Object.keys(views);
+  views.account = accountPage;
   const wanted = location.hash.slice(1);
-  current = wanted in views ? wanted : Object.keys(views)[0];
+  current = wanted in views ? wanted : pages[0];
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   if (!current) {
     $('#nav').replaceChildren();
     $('#view').replaceChildren(h('h2', {}, 'Aucun accès'),
-      h('p', { className: 'muted' }, 'Votre compte n\'a accès à aucune page. Demandez à un administrateur de vous attribuer des droits.'));
+      h('p', { className: 'muted' }, 'Votre compte n\'a accès à aucune page. Demandez à un administrateur de vous attribuer des droits.'),
+      h('button', { onclick: () => { current = 'account'; location.hash = 'account'; render(); } }, 'Mon compte'));
     return;
   }
   render();

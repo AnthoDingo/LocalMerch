@@ -50,6 +50,7 @@ public static class AdminApi
     record NewMovement(int ProductId, MovementType Type, int Quantity, string? Reason);
     record UserInput(string? Login, string? DisplayName, Role Role, bool Active, string? Password, List<PagePermission>? Permissions);
     record BrandingInput(string? Title);
+    record PasswordChange(string? Current, string? Next);
 
     const int MaxLogoBytes = 512 * 1024;
     const long MaxBackupBytes = 500L * 1024 * 1024;
@@ -99,10 +100,26 @@ public static class AdminApi
         api.MapGet("/me", (ClaimsPrincipal me) => new
         {
             name = me.Identity?.Name,
+            login = me.FindFirstValue(Policies.LoginClaim),
             role = me.FindFirstValue(ClaimTypes.Role),
             access = Enum.GetValues<Page>().ToDictionary(p => p.ToString().ToLowerInvariant(),
                 p => Policies.Allows(me, p, Access.Write) ? Access.Write : Policies.Allows(me, p, Access.Read) ? Access.Read : Access.None),
         });
+        // Tout utilisateur connecté peut changer son propre mot de passe, en donnant l'actuel.
+        api.MapPut("/me/password", async (PasswordChange req, ClaimsPrincipal me, LocalMerchDb db) =>
+        {
+            var user = await db.Users.FindAsync(int.Parse(me.FindFirstValue(ClaimTypes.NameIdentifier)!));
+            if (user is null) return Results.Unauthorized();
+            if (!Secret.Verify(req.Current ?? "", user.PasswordHash))
+            {
+                await Task.Delay(1000); // freine les essais en rafale
+                return Refused("Mot de passe actuel incorrect.")!;
+            }
+            if (req.Next is not { Length: >= 8 } next) return Refused("Le nouveau mot de passe doit faire au moins 8 caractères.")!;
+            user.PasswordHash = Secret.Hash(next);
+            return await Save(db) ?? Results.NoContent();
+        });
+
         // Noms seuls, pour les listes déroulantes et les tableaux de toutes les pages.
         api.MapGet("/lookups", async (LocalMerchDb db) => new
         {
