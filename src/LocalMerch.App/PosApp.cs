@@ -77,7 +77,9 @@ public class PosWindow : Window
         this.options = options;
         Width = DesignWidth;
         Height = DesignHeight;
-        if (options.FullScreen) WindowState = WindowState.FullScreen;
+        // Appliqué une fois la fenêtre affichée : sous X11, certains gestionnaires de fenêtres
+        // ignorent le plein écran demandé avant l'affichage.
+        if (options.FullScreen) Opened += (_, _) => WindowState = WindowState.FullScreen;
 
         saleScreen = SaleScreen();
         Content = new Viewbox
