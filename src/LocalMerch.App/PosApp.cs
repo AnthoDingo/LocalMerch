@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -66,6 +67,14 @@ public class PosWindow : Window
     readonly TextBox freeAmount = new() { FontSize = 36, Width = 380, IsReadOnly = true, PlaceholderText = "0,00 €", HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBlock freeError = new() { FontSize = 16, Foreground = Brushes.OrangeRed, HorizontalAlignment = HorizontalAlignment.Center };
 
+    // Sortie : 5 appuis rapides sur le total ouvrent la saisie du mot de passe de sortie.
+    readonly Panel exitDialog = new() { IsVisible = false, Background = new SolidColorBrush(Colors.Black, 0.6) };
+    readonly TextBlock exitCode = new() { FontSize = 36, HorizontalAlignment = HorizontalAlignment.Center, MinHeight = 48 };
+    readonly TextBlock exitError = new() { FontSize = 16, Foreground = Brushes.OrangeRed, HorizontalAlignment = HorizontalAlignment.Center };
+    string exitInput = "";
+    int totalTaps;
+    DateTime lastTotalTap;
+
     List<PosKey> keys = [];
     Dictionary<int, Product> products = [];
     ShopSettings settings = new();
@@ -89,10 +98,13 @@ public class PosWindow : Window
             {
                 Width = DesignWidth,
                 Height = DesignHeight,
-                Children = { saleScreen, freePage },
+                Children = { saleScreen, freePage, exitDialog },
             },
         };
         BuildFreePage();
+        BuildExitDialog();
+        total.Background = Brushes.Transparent; // zone tactile sur tout le bloc, pas seulement les glyphes
+        total.PointerPressed += (_, _) => OnTotalTap();
 
         barcode.AddHandler(KeyDownEvent, OnBarcodeKey, RoutingStrategies.Tunnel);
         LocalMerchDb.CatalogChanged += OnCatalogChanged;
@@ -232,6 +244,75 @@ public class PosWindow : Window
             amount, options.FreeAmountVatRate);
         if (Pay(freeTicket, method)) ShowSaleScreen();
         else freeError.Text = status.Text;
+    }
+
+    // ---------- Sortie ----------
+
+    void BuildExitDialog()
+    {
+        var keypad = Keypad(k =>
+        {
+            if (k == "←") exitInput = exitInput.Length > 0 ? exitInput[..^1] : "";
+            else if (k == "C") exitInput = "";
+            else if (exitInput.Length < 20) exitInput += k;
+            exitCode.Text = new string('●', exitInput.Length);
+            exitError.Text = "";
+        }, "7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "←");
+
+        Button Action(string label, string color, Action click)
+        {
+            var b = new Button
+            {
+                Content = label, FontSize = 20, Height = 64, Width = 145, Foreground = Brushes.White,
+                Background = Brush.Parse(color), HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            b.Click += (_, _) => click();
+            return b;
+        }
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Spacing = 10,
+            Children = { Action("Annuler", "#6b7280", () => exitDialog.IsVisible = false), Action("Valider", "#16a34a", ValidateExit) },
+        };
+        var box = new Border
+        {
+            Background = Brushes.White, CornerRadius = new CornerRadius(12), Padding = new Thickness(24),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock { Text = "Mot de passe de sortie", FontSize = 24, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center },
+                    exitCode, keypad, exitError, actions,
+                },
+            },
+        };
+        TextElement.SetForeground(box, Brushes.Black); // lisible sur fond blanc, même en thème sombre
+        exitDialog.Children.Add(box);
+    }
+
+    void OnTotalTap()
+    {
+        var now = DateTime.UtcNow;
+        totalTaps = now - lastTotalTap < TimeSpan.FromSeconds(1) ? totalTaps + 1 : 1;
+        lastTotalTap = now;
+        if (totalTaps < 5) return;
+        totalTaps = 0;
+        exitInput = exitCode.Text = exitError.Text = "";
+        exitDialog.IsVisible = true;
+    }
+
+    void ValidateExit()
+    {
+        // Pas de mot de passe configuré : la sortie n'est pas protégée.
+        if (exitInput == (settings.ExitPassword ?? "")) Close();
+        else
+        {
+            exitError.Text = "Code incorrect.";
+            exitInput = exitCode.Text = "";
+        }
     }
 
     // ---------- Vente ----------

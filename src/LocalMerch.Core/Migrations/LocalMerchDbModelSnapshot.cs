@@ -225,6 +225,10 @@ namespace LocalMerch.Core.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ExitPassword")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<byte[]>("Logo")
                         .HasColumnType("BLOB");
 

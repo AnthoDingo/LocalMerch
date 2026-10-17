@@ -632,6 +632,17 @@ async function configView() {
     toast('Titre enregistré.');
     render();
   });
+  const exit = h('input', { name: 'exitPassword', inputMode: 'numeric', pattern: '[0-9]*', maxLength: 20, autocomplete: 'off',
+    title: 'Chiffres uniquement', value: (await api('exit-password')).exitPassword || '' });
+  exit.addEventListener('input', () => exit.value = exit.value.replace(/\D/g, ''));
+  const exitForm = h('form', { className: 'grid', style: 'max-width:560px; margin-top:12px' },
+    h('label', {}, 'Mot de passe de sortie'), exit,
+    h('div', { className: 'actions' }, h('button', { className: 'primary' }, 'Enregistrer')));
+  exitForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    await api('exit-password', 'PUT', { exitPassword: exit.value });
+    toast('Mot de passe de sortie enregistré.');
+  });
   const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif' });
   const upload = async () => {
     const f = file.files[0];
@@ -656,6 +667,9 @@ async function configView() {
           await api('branding/logo', 'DELETE'); toast('Logo supprimé.'); render();
         } }, 'Supprimer le logo')),
       h('p', { className: 'muted', style: 'margin:0' }, 'PNG, JPEG, WebP ou GIF, 512 Ko maximum. Un logo horizontal sur fond transparent rend le mieux.')),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Caisse'),
+      h('p', { className: 'muted' }, 'Code numérique demandé pour quitter la caisse. Laisser vide pour aucun code.'),
+      exitForm),
     backupSection(),
   ];
 }

@@ -50,6 +50,7 @@ public static class AdminApi
     record NewMovement(int ProductId, MovementType Type, int Quantity, string? Reason);
     record UserInput(string? Login, string? DisplayName, Role Role, bool Active, string? Password, List<PagePermission>? Permissions);
     record BrandingInput(string? Title);
+    record ExitPasswordInput(string? ExitPassword);
     record PasswordChange(string? Current, string? Next);
 
     const int MaxLogoBytes = 512 * 1024;
@@ -222,6 +223,14 @@ public static class AdminApi
             settings.Title = input.Title?.Trim() ?? "";
             if (Invalid(settings) is { } error) return error;
             return await Save(db) ?? Results.Ok(settings);
+        });
+        admin.MapGet("/exit-password", async (LocalMerchDb db) => new ExitPasswordInput((await Settings(db)).ExitPassword));
+        admin.MapPut("/exit-password", async (ExitPasswordInput input, LocalMerchDb db) =>
+        {
+            var settings = await Settings(db);
+            settings.ExitPassword = string.IsNullOrWhiteSpace(input.ExitPassword) ? null : input.ExitPassword.Trim();
+            if (Invalid(settings) is { } error) return error;
+            return await Save(db) ?? Results.NoContent();
         });
         // Corps brut (Content-Type = type de l'image) : pas de formulaire, donc pas de CSRF possible sans pré-vol CORS.
         admin.MapPost("/branding/logo", async (HttpRequest req, LocalMerchDb db) =>

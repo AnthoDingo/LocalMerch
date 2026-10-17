@@ -216,6 +216,9 @@ public class ShopSettings
     [JsonIgnore] public byte[]? Logo { get; set; }
     [JsonIgnore] public string? LogoContentType { get; set; }
     public bool HasLogo => Logo is not null;
+    /// <summary>Code demandé pour quitter la caisse. Jamais renvoyé par /api/branding (public).</summary>
+    [JsonIgnore, MaxLength(20), RegularExpression("^[0-9]*$", ErrorMessage = "Mot de passe de sortie : chiffres uniquement.")]
+    public string? ExitPassword { get; set; }
 }
 
 public enum TerminalProtocol { CaisseAp, Concert }
