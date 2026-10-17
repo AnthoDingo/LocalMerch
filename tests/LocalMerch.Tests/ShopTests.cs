@@ -141,6 +141,19 @@ public sealed class ShopTests : IDisposable
         Assert.Equal(DateTimeKind.Utc, db.StockMovements.Single().At.Kind);
     }
 
+    [Fact]
+    public void Enabled_terminal_requires_host_and_port()
+    {
+        static bool Valid(PaymentTerminal t) =>
+            System.ComponentModel.DataAnnotations.Validator.TryValidateObject(t, new(t), null, validateAllProperties: true);
+
+        Assert.True(Valid(new PaymentTerminal()));
+        Assert.False(Valid(new PaymentTerminal { Enabled = true }));
+        Assert.False(Valid(new PaymentTerminal { Host = "192.168.1.50", Port = 70000 }));
+        Assert.False(Valid(new PaymentTerminal { PosNumber = "1" }));
+        Assert.True(Valid(new PaymentTerminal { Enabled = true, Host = "192.168.1.50", Port = 8888 }));
+    }
+
     [Theory]
     [InlineData("127.0.0.1", true)]
     [InlineData("::1", true)]

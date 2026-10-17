@@ -85,6 +85,7 @@ const L = {
   In: 'Entrée', Out: 'Sortie', Adjustment: 'Ajustement', Sale: 'Vente', Refund: 'Remboursement', Receipt: 'Réception',
   Product: 'Produit', VoidLast: 'Annuler la dernière ligne', ClearTicket: 'Vider le ticket',
   PayCash: 'Payer en espèces', PayCard: 'Payer par carte', GoToPage: 'Aller à la page',
+  CaisseAp: 'Caisse-AP (IP)', Concert: 'Concert (IP)',
 };
 const money = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const date = v => v ? new Date(v).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
@@ -183,7 +184,7 @@ function field(f, value) {
   }
   if (f.type === 'textarea') return h('textarea', { ...common, rows: 3, value: value ?? '' });
   if (f.type === 'checkbox') return h('input', { ...common, type: 'checkbox', checked: !!value });
-  return h('input', { ...common, type: f.type || 'text', step: f.step, min: f.min, max: f.max, value: value ?? (f.type === 'color' ? '#3b82f6' : '') });
+  return h('input', { ...common, type: f.type || 'text', pattern: f.pattern, placeholder: f.placeholder, step: f.step, min: f.min, max: f.max, value: value ?? (f.type === 'color' ? '#3b82f6' : '') });
 }
 
 function readField(f, el) {
@@ -331,11 +332,47 @@ async function salesView() {
   ];
 }
 
+const terminalFields = [
+  { name: 'enabled', label: 'Activé', type: 'checkbox' },
+  { name: 'protocol', label: 'Protocole', type: 'select', options: enumChoices('CaisseAp', 'Concert'), required: true },
+  { name: 'host', label: 'Adresse IP du TPE', placeholder: '192.168.1.50' },
+  { name: 'port', label: 'Port', type: 'number', min: 1, max: 65535 },
+  { name: 'posNumber', label: 'N° de caisse', pattern: '[0-9]{2}', required: true },
+  { name: 'timeoutSeconds', label: 'Délai de paiement (s)', type: 'number', min: 10, max: 300, required: true },
+];
+
+async function terminalView() {
+  const t = await api('terminal');
+  const inputs = terminalFields.map(f => [f, field(f, t[f.name])]);
+  const status = h('p', { className: 'muted' });
+  const say = text => { status.textContent = text; };
+  const form = h('form', { className: 'grid', style: 'max-width:560px' },
+    inputs.map(([f, el]) => [h('label', {}, f.label), el]),
+    h('div', { className: 'actions' },
+      h('button', { type: 'button', onclick: async () => {
+        say('Test en cours…');
+        try { say((await api('terminal/test', 'POST')).message); } catch (e) { say(e.message); }
+      } }, 'Tester la connexion'),
+      h('button', { className: 'primary' }, 'Enregistrer')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const data = {};
+    for (const [f, el] of inputs) data[f.name] = readField(f, el);
+    await api('terminal', 'PUT', data);
+    say('Configuration enregistrée.');
+  });
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Terminal de paiement (TPE)')),
+    h('p', { className: 'muted' }, 'Le test vérifie que le TPE répond sur le réseau, avec la configuration enregistrée.'),
+    form, status,
+  ];
+}
+
 // --- Navigation ---
 const views = {
   keys: ['Touches', keysView], products: ['Produits', () => listView('products')], suppliers: ['Fournisseurs', () => listView('suppliers')],
   quotes: ['Devis', () => listView('quotes')], orders: ['Commandes', () => listView('orders')],
-  stock: ['Stock', stockView], sales: ['Ventes', salesView],
+  stock: ['Stock', stockView], sales: ['Ventes', salesView], terminal: ['TPE', terminalView],
 };
 let current = location.hash.slice(1) in views ? location.hash.slice(1) : 'keys';
 

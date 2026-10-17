@@ -146,6 +146,28 @@ public class Sale
         Lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => Money.VatOf(g.Sum(l => l.Amount), g.Key));
 }
 
+public enum TerminalProtocol { CaisseAp, Concert }
+
+/// <summary>Configuration du TPE réseau. Une seule ligne (Id = 1).</summary>
+public class PaymentTerminal : IValidatableObject
+{
+    public int Id { get; set; } = 1;
+    public bool Enabled { get; set; }
+    public TerminalProtocol Protocol { get; set; }
+    [MaxLength(255)] public string? Host { get; set; }
+    [Range(1, 65535)] public int? Port { get; set; }
+    /// <summary>Numéro de caisse transmis au TPE.</summary>
+    [Required, RegularExpression("^[0-9]{2}$")] public string PosNumber { get; set; } = "01";
+    /// <summary>Temps laissé au client pour payer.</summary>
+    [Range(10, 300)] public int TimeoutSeconds { get; set; } = 60;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext context)
+    {
+        if (Enabled && (string.IsNullOrWhiteSpace(Host) || Port is null))
+            yield return new("Un TPE activé doit avoir une adresse et un port.", [nameof(Host)]);
+    }
+}
+
 public static class Money
 {
     public static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);

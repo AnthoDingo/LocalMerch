@@ -16,6 +16,7 @@ public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(op
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Sale> Sales => Set<Sale>();
+    public DbSet<PaymentTerminal> PaymentTerminals => Set<PaymentTerminal>();
 
     public static LocalMerchDb Open(string connectionString) =>
         new(new DbContextOptionsBuilder<LocalMerchDb>().UseSqlite(connectionString).Options);

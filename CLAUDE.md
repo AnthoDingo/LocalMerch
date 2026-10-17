@@ -58,6 +58,7 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 - **Devis** : il s'agit de devis *fournisseurs*.
 - **Devis → commande** : un devis peut être converti en commande ; la commande garde la référence du devis.
 - **Réception de commande** : génère les mouvements d'entrée de stock correspondants.
+- **TPE réseau** : sa configuration (`PaymentTerminal`, une seule ligne, Id = 1) se fait dans l'onglet TPE de l'admin. Le protocole de paiement (Caisse-AP / Concert) n'est **pas encore implémenté** : le bouton « Payer par carte » enregistre la vente sans interroger le TPE.
 - Horodatage en UTC en base, affichage en heure locale.
 
 ## Sécurité

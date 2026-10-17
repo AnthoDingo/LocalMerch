@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net.Sockets;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -79,6 +80,33 @@ public static class AdminApi
                 .OrderByDescending(m => m.Id).Take(200).ToListAsync());
         api.MapPost("/stock/movements", (NewMovement m, Shop shop) =>
             shop.RecordMovement(m.ProductId, m.Type, m.Quantity, m.Reason));
+
+        api.MapGet("/terminal", async (LocalMerchDb db) => await db.PaymentTerminals.FindAsync(1) ?? new PaymentTerminal());
+        api.MapPut("/terminal", async (PaymentTerminal t, LocalMerchDb db) =>
+        {
+            t.Id = 1;
+            if (Invalid(t) is { } error) return error;
+            if (await db.PaymentTerminals.FindAsync(1) is { } existing) db.Entry(existing).CurrentValues.SetValues(t);
+            else db.PaymentTerminals.Add(t);
+            return await Save(db) ?? Results.Ok(t);
+        });
+        // Vérifie seulement que le TPE accepte une connexion TCP, avec la configuration enregistrée.
+        api.MapPost("/terminal/test", async (LocalMerchDb db) =>
+        {
+            if (await db.PaymentTerminals.FindAsync(1) is not { Host: { Length: > 0 } host, Port: { } port })
+                return Results.BadRequest(new { error = "Enregistrez d'abord l'adresse et le port du TPE." });
+            using var tcp = new TcpClient();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await tcp.ConnectAsync(host, port, cts.Token);
+                return Results.Ok(new { message = $"TPE joignable sur {host}:{port}." });
+            }
+            catch (Exception e) when (e is SocketException or OperationCanceledException)
+            {
+                return Results.BadRequest(new { error = $"TPE injoignable sur {host}:{port} ({(e is OperationCanceledException ? "délai dépassé" : e.Message)})." });
+            }
+        });
 
         api.MapGet("/sales", (LocalMerchDb db) =>
             db.Sales.AsNoTracking().OrderByDescending(s => s.Id).Take(200).ToListAsync());
