@@ -6,8 +6,11 @@ namespace LocalMerch.Core;
 
 public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(options)
 {
-    /// <summary>Levé après l'enregistrement d'un produit ou d'une touche : la caisse se recharge.</summary>
+    /// <summary>Levé après l'enregistrement d'un produit, d'une touche ou des réglages : la caisse se recharge.</summary>
     public static event Action? CatalogChanged;
+
+    /// <summary>Après un remplacement complet de la base (restauration).</summary>
+    public static void NotifyCatalogChanged() => CatalogChanged?.Invoke();
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<PosKey> PosKeys => Set<PosKey>();
@@ -17,6 +20,8 @@ public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(op
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<PaymentTerminal> PaymentTerminals => Set<PaymentTerminal>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<ShopSettings> Settings => Set<ShopSettings>();
 
     public static LocalMerchDb Open(string connectionString) =>
         new(new DbContextOptionsBuilder<LocalMerchDb>().UseSqlite(connectionString).Options);
@@ -51,6 +56,8 @@ public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(op
         b.Entity<StockMovement>().HasOne<Sale>().WithMany().HasForeignKey(m => m.SaleId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<StockMovement>().HasOne<PurchaseOrder>().WithMany().HasForeignKey(m => m.PurchaseOrderId).OnDelete(DeleteBehavior.Restrict);
 
+        b.Entity<User>().HasIndex(u => u.Login).IsUnique();
+
         b.Entity<Sale>().HasOne<Sale>().WithMany().HasForeignKey(s => s.RefundOfSaleId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Sale>().OwnsMany(s => s.Lines, l =>
         {
@@ -83,7 +90,7 @@ public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(op
     }
 
     bool CatalogTouched() => ChangeTracker.Entries().Any(e =>
-        e.Entity is Product or PosKey && e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+        e.Entity is Product or PosKey or ShopSettings && e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
 
     class UtcConverter() : ValueConverter<DateTime, DateTime>(
         v => v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));

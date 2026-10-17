@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 
 namespace LocalMerch.Core;
 
@@ -24,7 +26,8 @@ public class Product : IEntity
     public bool Active { get; set; } = true;
 }
 
-public enum KeyAction { Product, VoidLast, ClearTicket, PayCash, PayCard, GoToPage }
+// Nouvelles valeurs uniquement en fin de liste : stockées en base sous forme d'entier.
+public enum KeyAction { Product, VoidLast, ClearTicket, PayCash, PayCard, GoToPage, PayCheque, FreeAmount }
 
 public class PosKey : IEntity, IValidatableObject
 {
@@ -118,12 +121,13 @@ public class StockMovement
     public int? PurchaseOrderId { get; set; }
 }
 
-public enum PaymentMethod { Cash, Card }
+public enum PaymentMethod { Cash, Card, Cheque }
 
 public class SaleLine
 {
     public int Id { get; set; }
-    public int ProductId { get; set; }
+    /// <summary>Null pour un montant libre (hors catalogue, sans mouvement de stock).</summary>
+    public int? ProductId { get; set; }
     public string Label { get; set; } = "";
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
@@ -144,6 +148,54 @@ public class Sale
     /// <summary>TVA incluse, par taux.</summary>
     public Dictionary<decimal, decimal> Vat =>
         Lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => Money.VatOf(g.Sum(l => l.Amount), g.Key));
+}
+
+/// <summary>Rôles de l'administration web. Admin a tous les droits de Manager.</summary>
+public enum Role { Manager, Admin }
+
+/// <summary>Compte de l'administration web.</summary>
+public class User
+{
+    public int Id { get; set; }
+    [Required, MaxLength(50), RegularExpression("^[a-z0-9._-]+$", ErrorMessage = "Identifiant : minuscules, chiffres, . _ - uniquement.")]
+    public string Login { get; set; } = "";
+    [Required, MaxLength(100)] public string DisplayName { get; set; } = "";
+    public Role Role { get; set; }
+    public bool Active { get; set; } = true;
+    [JsonIgnore] public string? PasswordHash { get; set; }
+    public bool HasPassword => PasswordHash is not null;
+}
+
+/// <summary>Hachage PBKDF2 des mots de passe. Format : itérations.sel.hash (base64).</summary>
+public static class Secret
+{
+    const int Iterations = 100_000;
+
+    public static string Hash(string secret)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(secret, salt, Iterations, HashAlgorithmName.SHA256, 32);
+        return $"{Iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
+    }
+
+    public static bool Verify(string secret, string? stored)
+    {
+        if (stored?.Split('.') is not [var iterations, var salt, var hash]) return false;
+        var expected = Convert.FromBase64String(hash);
+        var actual = Rfc2898DeriveBytes.Pbkdf2(secret, Convert.FromBase64String(salt), int.Parse(iterations),
+            HashAlgorithmName.SHA256, expected.Length);
+        return CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
+}
+
+/// <summary>Personnalisation (titre, logo). Une seule ligne (Id = 1).</summary>
+public class ShopSettings
+{
+    public int Id { get; set; } = 1;
+    [Required, MaxLength(100)] public string Title { get; set; } = "LocalMerch";
+    [JsonIgnore] public byte[]? Logo { get; set; }
+    [JsonIgnore] public string? LogoContentType { get; set; }
+    public bool HasLogo => Logo is not null;
 }
 
 public enum TerminalProtocol { CaisseAp, Concert }

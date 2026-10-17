@@ -32,11 +32,12 @@ src/
     Model.cs            # entités, Money (arrondis, TVA)
     LocalMerchDb.cs     # DbContext EF Core (SQLite), événement CatalogChanged
     Shop.cs             # opérations métier (stock, ventes, devis, commandes), Ticket, LocalNetwork
+    Backup.cs           # sauvegarde / restauration de la base (API de sauvegarde SQLite)
     Migrations/
   LocalMerch.App/       # point d'entrée : Kestrel (admin web) + Avalonia (caisse)
     Program.cs          # démarrage, auth, filtre réseau local
     AdminApi.cs         # API JSON /api/* (CRUD générique + actions métier)
-    PosApp.cs           # écran de caisse, construit en code (pas de XAML)
+    PosApp.cs           # écran de caisse, construit en code (pas de XAML), conçu en 1024×768 (4:3)
     wwwroot/index.html  # page d'admin, HTML/JS sans framework
 tests/
   LocalMerch.Tests/     # xUnit, SQLite en mémoire
@@ -58,10 +59,20 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 - **Devis** : il s'agit de devis *fournisseurs*.
 - **Devis → commande** : un devis peut être converti en commande ; la commande garde la référence du devis.
 - **Réception de commande** : génère les mouvements d'entrée de stock correspondants.
+- **Montant libre** : une touche `FreeAmount` ouvre un écran de saisie. Elle sert aux commandes passées sur un catalogue extérieur : on saisit le montant TTC, la TVA et le n° de bon, puis on paie (CB, espèces, chèque). La ligne n'a pas de produit (`ProductId` null), donc elle ne crée aucun mouvement de stock.
 - **TPE réseau** : sa configuration (`PaymentTerminal`, une seule ligne, Id = 1) se fait dans l'onglet TPE de l'admin. Le protocole de paiement (Caisse-AP / Concert) n'est **pas encore implémenté** : le bouton « Payer par carte » enregistre la vente sans interroger le TPE.
 - Horodatage en UTC en base, affichage en heure locale.
 
 ## Sécurité
+
+- **Rôles** : ils ne concernent que l'admin web, la caisse n'a pas de connexion.
+  - `Manager` (Responsable) : tout, sauf les onglets Utilisateurs, TPE et Configuration.
+  - `Admin` : tout.
+- Les politiques sont définies dans `Policies` (AdminApi.cs). Le groupe `/api` exige `Manager`, et le sous-groupe `admin` exige `Admin`.
+- À chaque requête, la session est revalidée en base (compte actif, même rôle, même login). Un compte désactivé est donc déconnecté immédiatement.
+- Les mots de passe sont hachés en PBKDF2 (`Secret`). Ils ne sont jamais renvoyés par l'API.
+- Le dernier administrateur actif ne peut être ni supprimé, ni désactivé, ni rétrogradé.
+- Une restauration copie d'abord la base actuelle dans `<données>/backups/`. Elle refuse les fichiers corrompus, ceux qui ne viennent pas de LocalMerch et ceux créés par une version plus récente.
 
 - L'admin web modifie la caisse : accès protégé (authentification) et écoute limitée au réseau local par défaut.
 - Valider toutes les entrées reçues par l'API web.
@@ -69,7 +80,7 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 
 ## Linux / déploiement
 
-- Cible : Linux x64 (éventuellement ARM64 pour un mini-PC/Raspberry).
+- Cible : Linux x64 (éventuellement ARM64 pour un mini-PC/Raspberry), **écran 4:3**. La caisse est dessinée en 1024×768 dans un `Viewbox` : ne pas dépasser cette surface. Grille par défaut : 6 lignes × 5 colonnes.
 - Publication : `dotnet publish -c Release -r linux-x64 --self-contained`.
 - Lancement en service `systemd` ; la caisse démarre en plein écran.
 - Chemins : utiliser `Path.Combine` et des emplacements standards (`Environment.SpecialFolder.ApplicationData`), jamais de chemins Windows codés en dur.
@@ -89,7 +100,7 @@ dotnet publish src/LocalMerch.App -c Release -r linux-x64 --self-contained -o pu
 ## Configuration (`appsettings.json`, surchargeable par variables d'environnement `Section__Clé`)
 
 - `Urls` : adresse d'écoute (par défaut `http://0.0.0.0:5080`).
-- `Admin:Password` : mot de passe de l'admin. S'il est vide, un mot de passe est généré au premier lancement dans `<données>/admin-password.txt`.
+- `Admin:Password` : mot de passe du compte `admin`, créé quand aucun administrateur actif n'existe. S'il est vide, un mot de passe est généré dans `<données>/admin-password.txt`.
 - `Admin:AllowRemote` : `false` par défaut (seuls le loopback et les réseaux privés sont acceptés).
 - `Pos:Rows`, `Pos:Columns`, `Pos:FullScreen` : grille des touches et plein écran.
 - `Culture` : `fr-FR` (format monétaire).

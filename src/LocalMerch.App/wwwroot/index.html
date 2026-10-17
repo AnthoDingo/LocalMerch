@@ -34,19 +34,24 @@
   .keys button.empty { background: #e5e7eb; color: var(--muted); border: 1px dashed var(--line); }
   #login { max-width: 320px; margin: 15vh auto; background: var(--card); padding: 24px; border-radius: 8px; border: 1px solid var(--line); }
   #login input { width: 100%; padding: 8px; margin: 8px 0; }
+  #login img { display: block; max-width: 100%; max-height: 100px; margin: 0 auto 8px; }
+  .logo-preview { max-width: 240px; max-height: 120px; border: 1px solid var(--line); background: #fff; }
   .muted { color: var(--muted); }
   .hidden { display: none; }
 </style>
 </head>
 <body>
 <form id="login" class="hidden">
-  <h2>LocalMerch</h2>
-  <label>Mot de passe administrateur<input type="password" name="password" required autofocus></label>
+  <img id="login-logo" class="hidden" alt="">
+  <h2 id="login-title">LocalMerch</h2>
+  <label>Identifiant<input name="username" autocomplete="username" required autofocus></label>
+  <label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label>
   <button class="primary">Connexion</button>
   <p id="login-error" class="muted"></p>
 </form>
 <div id="app" class="hidden">
-  <header><strong>LocalMerch</strong><nav id="nav"></nav><button id="logout" style="margin-left:auto">Déconnexion</button></header>
+  <header><img id="header-logo" class="hidden" alt="" style="height:32px"><strong id="header-title">LocalMerch</strong><nav id="nav"></nav>
+    <span id="me" class="muted" style="margin-left:auto"></span><button id="logout">Déconnexion</button></header>
   <main id="view"></main>
 </div>
 <dialog id="dialog"></dialog>
@@ -86,6 +91,8 @@ const L = {
   Product: 'Produit', VoidLast: 'Annuler la dernière ligne', ClearTicket: 'Vider le ticket',
   PayCash: 'Payer en espèces', PayCard: 'Payer par carte', GoToPage: 'Aller à la page',
   CaisseAp: 'Caisse-AP (IP)', Concert: 'Concert (IP)',
+  Cheque: 'Chèque', PayCheque: 'Payer par chèque', FreeAmount: 'Montant libre',
+  Manager: 'Responsable', Admin: 'Administrateur',
 };
 const money = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const date = v => v ? new Date(v).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
@@ -154,12 +161,25 @@ const schemas = {
     editable: o => o.status !== 'Received',
     actions: o => ['Draft', 'Sent'].includes(o.status) && h('button', { onclick: () => act(`orders/${o.id}/receive`, 'Réceptionner la commande et entrer les quantités en stock ?') }, 'Réceptionner'),
   },
+  // Responsable : tout sauf Utilisateurs, TPE et Configuration. Administrateur : tout.
+  users: {
+    title: 'Utilisateurs', path: 'users', newItem: () => ({ role: 'Manager', active: true }),
+    fields: [
+      { name: 'login', label: 'Identifiant', required: true, pattern: '[a-z0-9._\\-]+', autocomplete: 'off' },
+      { name: 'displayName', label: 'Nom affiché', required: true },
+      { name: 'role', label: 'Rôle', type: 'select', options: enumChoices('Manager', 'Admin'), required: true },
+      { name: 'active', label: 'Actif', type: 'checkbox' },
+      { name: 'password', label: 'Mot de passe (vide = inchangé, 8 caractères min.)', type: 'password', autocomplete: 'new-password' },
+    ],
+    columns: [['Nom', u => u.displayName], ['Identifiant', u => u.login], ['Rôle', u => L[u.role]],
+      ['Actif', u => u.active ? 'Oui' : 'Non'], ['Mot de passe', u => u.hasPassword ? 'Oui' : 'Non']],
+  },
   keys: {
     title: 'Touche', path: 'keys',
     fields: [
       { name: 'label', label: 'Libellé', required: true },
       { name: 'color', label: 'Couleur', type: 'color' },
-      { name: 'action', label: 'Action', type: 'select', options: enumChoices('Product', 'VoidLast', 'ClearTicket', 'PayCash', 'PayCard', 'GoToPage'), required: true },
+      { name: 'action', label: 'Action', type: 'select', options: enumChoices('Product', 'FreeAmount', 'VoidLast', 'ClearTicket', 'PayCash', 'PayCard', 'PayCheque', 'GoToPage'), required: true },
       { name: 'productId', label: 'Produit', type: 'select', options: choices('products') },
       { name: 'targetPage', label: 'Page cible', type: 'number', min: 0, max: 99 },
       { name: 'page', label: 'Page', type: 'number', min: 0, max: 99, required: true },
@@ -184,7 +204,7 @@ function field(f, value) {
   }
   if (f.type === 'textarea') return h('textarea', { ...common, rows: 3, value: value ?? '' });
   if (f.type === 'checkbox') return h('input', { ...common, type: 'checkbox', checked: !!value });
-  return h('input', { ...common, type: f.type || 'text', pattern: f.pattern, placeholder: f.placeholder, step: f.step, min: f.min, max: f.max, value: value ?? (f.type === 'color' ? '#3b82f6' : '') });
+  return h('input', { ...common, type: f.type || 'text', pattern: f.pattern, placeholder: f.placeholder, autocomplete: f.autocomplete, inputMode: f.inputMode, step: f.step, min: f.min, max: f.max, value: value ?? (f.type === 'color' ? '#3b82f6' : '') });
 }
 
 function readField(f, el) {
@@ -368,13 +388,92 @@ async function terminalView() {
   ];
 }
 
+let branding = { title: 'LocalMerch', hasLogo: false };
+async function applyBranding() {
+  branding = await (await fetch('/api/branding')).json();
+  document.title = branding.title + ' — Administration';
+  $('#login-title').textContent = $('#header-title').textContent = branding.title;
+  for (const img of [$('#login-logo'), $('#header-logo')]) {
+    img.classList.toggle('hidden', !branding.hasLogo);
+    if (branding.hasLogo) img.src = '/logo?' + Date.now();
+  }
+}
+
+async function configView() {
+  await applyBranding();
+  const title = h('input', { name: 'title', required: true, maxLength: 100, value: branding.title });
+  const form = h('form', { className: 'grid', style: 'max-width:560px' },
+    h('label', {}, 'Titre'), title,
+    h('div', { className: 'actions' }, h('button', { className: 'primary' }, 'Enregistrer le titre')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    await api('branding', 'PUT', { title: title.value });
+    render();
+  });
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif' });
+  const upload = async () => {
+    const f = file.files[0];
+    if (!f) return alert('Choisissez une image.');
+    if (f.size > 512 * 1024) return alert('Logo trop lourd (512 Ko maximum).');
+    const r = await fetch('/api/branding/logo', { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+    if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch {} return alert(msg); }
+    render();
+  };
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Configuration')),
+    h('h3', {}, 'Apparence'),
+    h('p', { className: 'muted' }, 'Le titre et le logo s\'affichent sur la page de connexion, dans cette administration et sur la caisse.'),
+    form,
+    h('h3', {}, 'Logo'),
+    branding.hasLogo ? h('img', { className: 'logo-preview', src: '/logo?' + Date.now(), alt: 'Logo actuel' }) : h('p', { className: 'muted' }, 'Aucun logo.'),
+    h('div', { className: 'toolbar', style: 'margin-top:8px' }, file,
+      h('button', { className: 'primary', onclick: upload }, 'Envoyer le logo'),
+      branding.hasLogo && h('button', { className: 'danger', onclick: async () => {
+        if (!confirm('Supprimer le logo ?')) return;
+        await api('branding/logo', 'DELETE'); render();
+      } }, 'Supprimer le logo')),
+    h('p', { className: 'muted' }, 'PNG, JPEG, WebP ou GIF, 512 Ko maximum. Un logo horizontal sur fond transparent rend le mieux.'),
+    ...backupSection(),
+  ];
+}
+
+function backupSection() {
+  const file = h('input', { type: 'file', accept: '.db' });
+  const status = h('p', { className: 'muted' });
+  const restore = async () => {
+    const f = file.files[0];
+    if (!f) return alert('Choisissez un fichier de sauvegarde (.db).');
+    if (!confirm(`Remplacer TOUTES les données et la configuration par « ${f.name} » ?\n\n` +
+      'La base actuelle sera conservée dans le dossier « backups » du serveur. Vous devrez peut-être vous reconnecter.')) return;
+    status.textContent = 'Restauration en cours…';
+    const r = await fetch('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+    let body = {};
+    try { body = await r.json(); } catch {}
+    if (!r.ok) { status.textContent = body.error || r.statusText; return; }
+    alert(body.message);
+    location.reload();
+  };
+  return [
+    h('h3', {}, 'Sauvegarde et restauration'),
+    h('p', { className: 'muted' }, 'La sauvegarde contient toutes les données et toute la configuration : produits, touches, ' +
+      'fournisseurs, devis, commandes, stock, ventes, utilisateurs, TPE, titre et logo. ' +
+      'Les réglages système du fichier appsettings.json (port, taille de la grille) n\'en font pas partie.'),
+    h('div', { className: 'toolbar' }, h('a', { href: '/api/backup', download: '' }, h('button', { type: 'button', className: 'primary' }, 'Télécharger une sauvegarde'))),
+    h('div', { className: 'toolbar' }, file, h('button', { className: 'danger', onclick: restore }, 'Restaurer cette sauvegarde')),
+    status,
+  ];
+}
+
 // --- Navigation ---
-const views = {
+// [libellé, écran, réservé aux administrateurs]
+const allViews = {
   keys: ['Touches', keysView], products: ['Produits', () => listView('products')], suppliers: ['Fournisseurs', () => listView('suppliers')],
   quotes: ['Devis', () => listView('quotes')], orders: ['Commandes', () => listView('orders')],
-  stock: ['Stock', stockView], sales: ['Ventes', salesView], terminal: ['TPE', terminalView],
+  stock: ['Stock', stockView], sales: ['Ventes', salesView],
+  users: ['Utilisateurs', () => listView('users'), true], terminal: ['TPE', terminalView, true], config: ['Configuration', configView, true],
 };
-let current = location.hash.slice(1) in views ? location.hash.slice(1) : 'keys';
+let views = {};
+let current = 'keys';
 
 async function render() {
   $('#nav').replaceChildren(...Object.entries(views).map(([k, [label]]) =>
@@ -391,19 +490,30 @@ function showLogin() {
 $('#login').addEventListener('submit', async e => {
   e.preventDefault();
   const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password: e.target.password.value }) });
-  if (!r.ok) { $('#login-error').textContent = 'Mot de passe incorrect.'; return; }
+    body: JSON.stringify({ username: e.target.username.value, password: e.target.password.value }) });
+  if (!r.ok) {
+    let msg = 'Identifiant ou mot de passe incorrect.';
+    if (r.status === 403) try { msg = (await r.json()).error; } catch {}
+    $('#login-error').textContent = msg;
+    return;
+  }
+  $('#login-error').textContent = '';
   e.target.reset();
   start();
 });
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); });
 
 async function start() {
-  await api('me');
+  const me = await api('me');
+  $('#me').textContent = `${me.name} (${L[me.role]})`;
+  views = Object.fromEntries(Object.entries(allViews).filter(([, [, , adminOnly]]) => !adminOnly || me.role === 'Admin'));
+  const wanted = location.hash.slice(1);
+  current = wanted in views ? wanted : 'keys';
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   render();
 }
+applyBranding().catch(() => {});
 start().catch(() => {});
 </script>
 </body>

@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using LocalMerch.Core;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,14 +36,30 @@ public static class Program
             o.Cookie.SameSite = SameSiteMode.Strict;
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
+            o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
+            // Un compte désactivé, supprimé ou changé de rôle perd sa session immédiatement.
+            o.Events.OnValidatePrincipal = async c =>
+            {
+                var db = c.HttpContext.RequestServices.GetRequiredService<LocalMerchDb>();
+                var user = int.TryParse(c.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
+                    ? await db.Users.FindAsync(id) : null;
+                // Le login est comparé aussi : après une restauration, un même Id peut désigner une autre personne.
+                if (user is not { Active: true } || user.Role.ToString() != c.Principal!.FindFirstValue(ClaimTypes.Role)
+                    || user.Login != c.Principal!.FindFirstValue(AdminApi.LoginClaim))
+                {
+                    c.RejectPrincipal();
+                    await c.HttpContext.SignOutAsync();
+                }
+            };
         });
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorizationBuilder()
+            .AddPolicy(Policies.Manager, p => p.RequireRole(nameof(Role.Manager), nameof(Role.Admin)))
+            .AddPolicy(Policies.Admin, p => p.RequireRole(nameof(Role.Admin)));
         builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         var app = builder.Build();
 
-        using (var scope = app.Services.CreateScope())
-            scope.ServiceProvider.GetRequiredService<LocalMerchDb>().Database.Migrate();
+        PrepareDatabase(app, dataDir);
 
         var allowRemote = app.Configuration.GetValue<bool>("Admin:AllowRemote");
         app.Use(async (ctx, next) =>
@@ -57,7 +75,7 @@ public static class Program
         app.UseStaticFiles();
         app.UseAuthentication();
         app.UseAuthorization();
-        AdminApi.Map(app, AdminPassword(app.Configuration, dataDir, app.Logger));
+        AdminApi.Map(app, dataDir);
 
         if (headless)
         {
@@ -70,8 +88,25 @@ public static class Program
         app.StopAsync().GetAwaiter().GetResult();
     }
 
-    /// <summary>Mot de passe « Admin:Password », sinon généré une fois et gardé dans le dossier de données.</summary>
-    static string AdminPassword(IConfiguration config, string dataDir, ILogger log)
+    /// <summary>Met la base à jour et garantit un compte administrateur. Au démarrage et après une restauration.</summary>
+    internal static void PrepareDatabase(WebApplication app, string dataDir)
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LocalMerchDb>();
+        db.Database.Migrate();
+        if (db.Users.Any(u => u.Role == Role.Admin && u.Active && u.PasswordHash != null)) return;
+
+        var admin = db.Users.FirstOrDefault(u => u.Login == "admin") ?? db.Users.Add(new User { Login = "admin" }).Entity;
+        admin.DisplayName = "Administrateur";
+        admin.Role = Role.Admin;
+        admin.Active = true;
+        admin.PasswordHash = Secret.Hash(InitialPassword(app.Configuration, dataDir, app.Logger));
+        db.SaveChanges();
+    }
+
+    /// <summary>Mot de passe du compte « admin » créé au premier démarrage : « Admin:Password »,
+    /// sinon généré et gardé dans le dossier de données.</summary>
+    static string InitialPassword(IConfiguration config, string dataDir, ILogger log)
     {
         if (config["Admin:Password"] is { Length: > 0 } configured) return configured;
 
@@ -81,14 +116,14 @@ public static class Program
             File.WriteAllText(file, RandomNumberGenerator.GetHexString(16, lowercase: true));
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
-        log.LogWarning("Mot de passe d'administration : voir {File}", file);
+        log.LogWarning("Compte « admin » créé, mot de passe dans {File}", file);
         return File.ReadAllText(file).Trim();
     }
 }
 
 public record PosOptions
 {
-    public int Rows { get; init; } = 5;
-    public int Columns { get; init; } = 6;
+    public int Rows { get; init; } = 6;
+    public int Columns { get; init; } = 5;
     public bool FullScreen { get; init; } = true;
 }

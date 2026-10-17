@@ -74,6 +74,74 @@ public sealed class ShopTests : IDisposable
     }
 
     [Fact]
+    public void Free_amount_is_sold_without_stock_movement()
+    {
+        var t = new Ticket();
+        t.AddFree("Bon de commande 42", 123.456m, 20m);
+        t.Add(coffee);
+
+        var sale = shop.CompleteSale(t, PaymentMethod.Cheque);
+
+        Assert.Equal(124.96m, sale.Total); // 123,46 + 1,50
+        Assert.Null(sale.Lines[0].ProductId);
+        Assert.Equal(-1, shop.StockOf(coffee.Id));
+        Assert.Single(db.StockMovements);
+
+        shop.RefundSale(sale.Id);
+        Assert.Equal(0, shop.StockOf(coffee.Id));
+        Assert.Throws<ShopException>(() => new Ticket().AddFree("x", 0m, 20m));
+    }
+
+    [Fact]
+    public void Backup_restores_data_and_rejects_foreign_files()
+    {
+        var dir = Directory.CreateTempSubdirectory("localmerch-test").FullName;
+        try
+        {
+            var live = Path.Combine(dir, "live.db");
+            var backup = Path.Combine(dir, "backup.db");
+            using (var source = LocalMerchDb.Open($"Data Source={live};Pooling=False"))
+            {
+                source.Database.Migrate();
+                source.Products.Add(new Product { Name = "Avant", Price = 1m });
+                source.SaveChanges();
+            }
+            Backup.Save(live, backup);
+            using (var db2 = LocalMerchDb.Open($"Data Source={live};Pooling=False"))
+            {
+                db2.Products.Single().Name = "Après";
+                db2.SaveChanges();
+                Backup.Validate(backup, db2.Database.GetMigrations());
+            }
+
+            Backup.Restore(backup, live);
+            using (var db3 = LocalMerchDb.Open($"Data Source={live};Pooling=False"))
+                Assert.Equal("Avant", db3.Products.Single().Name);
+
+            var garbage = Path.Combine(dir, "garbage.db");
+            File.WriteAllText(garbage, "ceci n'est pas une base");
+            Assert.Throws<ShopException>(() => Backup.Validate(garbage, []));
+            Assert.Throws<ShopException>(() => Backup.Validate(backup, ["UneAutreMigration"]));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Secrets_are_salted_and_verified()
+    {
+        var a = Secret.Hash("motdepasse");
+        Assert.NotEqual(a, Secret.Hash("motdepasse"));
+        Assert.True(Secret.Verify("motdepasse", a));
+        Assert.False(Secret.Verify("motdepassE", a));
+        Assert.False(Secret.Verify("motdepasse", null));
+        Assert.False(Secret.Verify("motdepasse", "n'importe quoi"));
+    }
+
+    [Fact]
     public void Empty_sale_is_refused()
     {
         Assert.Throws<ShopException>(() => shop.CompleteSale(new Ticket(), PaymentMethod.Cash));

@@ -74,9 +74,9 @@ public class Shop(LocalMerchDb db)
         using var tx = db.Database.BeginTransaction();
         db.Sales.Add(sale);
         db.SaveChanges();
-        db.StockMovements.AddRange(sale.Lines.Select(l => new StockMovement
+        db.StockMovements.AddRange(sale.Lines.Where(l => l.ProductId is not null).Select(l => new StockMovement
         {
-            ProductId = l.ProductId, Quantity = -l.Quantity, Type = type, SaleId = sale.Id, At = sale.At,
+            ProductId = l.ProductId!.Value, Quantity = -l.Quantity, Type = type, SaleId = sale.Id, At = sale.At,
         }));
         db.SaveChanges();
         tx.Commit();
@@ -136,6 +136,14 @@ public class Ticket
         else Lines.Add(new TicketLine(p.Id, p.Name, p.Price, p.VatRate));
     }
 
+    /// <summary>Montant libre TTC, par exemple une commande passée sur un catalogue extérieur.</summary>
+    public void AddFree(string label, decimal amount, decimal vatRate)
+    {
+        if (amount <= 0) throw new ShopException("Le montant doit être positif.");
+        if (vatRate is < 0 or > 100) throw new ShopException("Taux de TVA invalide.");
+        Lines.Add(new TicketLine(null, label, Money.Round(amount), vatRate));
+    }
+
     public void VoidLast()
     {
         if (Lines.Count == 0) return;
@@ -145,9 +153,9 @@ public class Ticket
     public void Clear() => Lines.Clear();
 }
 
-public class TicketLine(int productId, string label, decimal unitPrice, decimal vatRate)
+public class TicketLine(int? productId, string label, decimal unitPrice, decimal vatRate)
 {
-    public int ProductId { get; } = productId;
+    public int? ProductId { get; } = productId;
     public string Label { get; } = label;
     public decimal UnitPrice { get; } = unitPrice;
     public decimal VatRate { get; } = vatRate;
