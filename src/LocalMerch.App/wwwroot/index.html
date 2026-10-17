@@ -5,64 +5,180 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LocalMerch — Administration</title>
 <style>
-  :root { --bg: #f6f7f9; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #2563eb; --card: #fff; }
+  :root {
+    --bg: #f4f6f9; --card: #fff; --fg: #1d2330; --muted: #667085; --line: #e4e7ec; --line-strong: #d0d5dd;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --accent-soft: #eaf1ff; --accent-fg: #fff;
+    --danger: #c62828; --danger-soft: #fdecec; --success: #15803d; --success-soft: #e7f6ec;
+    --warn: #b45309; --warn-soft: #fff4e0; --info: #0369a1; --info-soft: #e4f2fb; --neutral-soft: #f0f2f5;
+    --shadow: 0 1px 2px rgb(16 24 40 / .05), 0 1px 3px rgb(16 24 40 / .07);
+    --shadow-lg: 0 16px 40px rgb(16 24 40 / .2);
+    --radius: 12px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e131a; --card: #161d27; --fg: #e6e9ef; --muted: #98a2b3; --line: #243041; --line-strong: #34425a;
+      --accent: #5b93ff; --accent-hover: #78a7ff; --accent-soft: #1a2944; --accent-fg: #0b1220;
+      --danger: #ff7070; --danger-soft: #3a1d22; --success: #4ade80; --success-soft: #142c1d;
+      --warn: #fbbf24; --warn-soft: #33290f; --info: #38bdf8; --info-soft: #11293a; --neutral-soft: #1e2734;
+      --shadow: 0 1px 2px rgb(0 0 0 / .4); --shadow-lg: 0 16px 40px rgb(0 0 0 / .55);
+      color-scheme: dark;
+    }
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg);
+    -webkit-font-smoothing: antialiased; }
+  h2 { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Mise en page et barre latérale */
   .layout { display: flex; min-height: 100vh; }
-  aside { width: 220px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+  aside { width: 232px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
     background: var(--card); border-right: 1px solid var(--line); transition: width .15s; overflow: hidden; }
-  aside.collapsed { width: 56px; }
-  .brand { display: flex; align-items: center; gap: 8px; padding: 12px; min-height: 56px; }
+  aside.collapsed { width: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 16px 14px; min-height: 64px; border-bottom: 1px solid var(--line); }
   .brand img { max-height: 32px; max-width: 100%; }
-  .brand strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  aside nav { flex: 1; overflow-y: auto; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
-  .side-btn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 9px 10px;
-    border-radius: 6px; cursor: pointer; font: inherit; color: inherit; text-align: left; white-space: nowrap; }
-  .side-btn:hover { background: var(--bg); }
-  .side-btn.active { background: var(--accent); color: #fff; }
+  .brand strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  aside nav { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .side-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: auto; border: 0; background: none; padding: 8px 10px;
+    border-radius: 8px; cursor: pointer; font: inherit; font-weight: 500; color: var(--muted); text-align: left; white-space: nowrap; }
+  .side-btn:hover:not(:disabled) { background: var(--neutral-soft); color: var(--fg); }
+  .side-btn.active, .side-btn.active:hover { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .side-btn svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .side-foot { border-top: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .side-foot { border-top: 1px solid var(--line); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
   #me { padding: 4px 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .perms td { padding: 3px 8px 3px 0; border: 0; vertical-align: middle; }
-  .perms select { width: auto; }
-  .side-section { margin: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  .side-section { margin: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
     color: var(--muted); white-space: nowrap; }
-  .side-section:first-child { margin-top: 4px; }
+  .side-section:first-child { margin-top: 6px; }
   aside.collapsed .side-section { font-size: 0; margin: 8px 6px; border-top: 1px solid var(--line); }
   aside.collapsed .side-section:first-child { border-top: 0; margin: 0; }
   aside.collapsed .label, aside.collapsed .brand strong, aside.collapsed #me { display: none; }
-  aside.collapsed .side-btn { justify-content: center; padding: 9px 0; }
-  aside.collapsed .brand { justify-content: center; padding: 12px 4px; }
-  main { flex: 1; min-width: 0; padding: 16px; max-width: 1200px; }
-  table { width: 100%; border-collapse: collapse; background: var(--card); }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; }
-  td.num, th.num { text-align: right; }
-  button, input, select, textarea { font: inherit; }
-  button { padding: 6px 12px; border: 1px solid var(--line); background: var(--card); border-radius: 6px; cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.danger { color: #b91c1c; }
-  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-  .toolbar h2 { margin: 0 auto 0 0; font-size: 20px; }
-  dialog { border: 1px solid var(--line); border-radius: 8px; width: min(640px, 95vw); }
-  form.grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px; align-items: center; }
-  form.grid input:not([type=checkbox]), form.grid select, form.grid textarea { width: 100%; padding: 6px; }
-  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; grid-column: 1 / -1; }
-  .lines { grid-column: 1 / -1; }
-  .lines input, .lines select { width: 100%; padding: 4px; }
-  .keys { display: grid; gap: 6px; }
-  .keys button { height: 80px; color: #fff; border: 0; font-weight: 600; white-space: normal; }
-  .keys button.empty { background: #e5e7eb; color: var(--muted); border: 1px dashed var(--line); }
-  #login { max-width: 320px; margin: 15vh auto; background: var(--card); padding: 24px; border-radius: 8px; border: 1px solid var(--line); }
-  #login input { width: 100%; padding: 8px; margin: 8px 0; }
-  #login img { display: block; max-width: 100%; max-height: 100px; margin: 0 auto 8px; }
-  .logo-preview { max-width: 240px; max-height: 120px; border: 1px solid var(--line); background: #fff; }
-  .muted { color: var(--muted); }
-  .hidden { display: none; }
+  aside.collapsed .side-btn { justify-content: center; padding: 8px 0; }
+  aside.collapsed .brand { justify-content: center; padding: 16px 4px; }
+  main { flex: 1; min-width: 0; padding: 28px 32px 48px; max-width: 1240px; }
+  /* Petit écran : barre toujours étroite, dépliée par-dessus le contenu. */
+  @media (max-width: 700px) {
+    main { padding: 16px; }
+    .layout { padding-left: 60px; }
+    aside { position: fixed; left: 0; top: 0; z-index: 50; }
+    aside:not(.collapsed) { box-shadow: var(--shadow-lg); }
+  }
+
+  /* En-tête de page */
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar h2 { margin: 0 auto 0 0; }
+  main > p.muted { margin: -8px 0 16px; }
+
+  /* Cartes et tableaux */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .pad { padding: 20px 24px; margin-bottom: 20px; }
+  .pad > h3 + p.muted { margin-top: 0; }
+  .table-wrap { overflow: auto; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  thead th { position: sticky; top: 0; background: var(--card); font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .table-wrap tbody tr:hover td { background: var(--neutral-soft); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.nowrap { white-space: nowrap; }
+  td.empty { text-align: center; padding: 36px 14px; color: var(--muted); }
+  td.row-actions { white-space: nowrap; text-align: right; }
+  td.row-actions button { height: 30px; padding: 0 10px; font-size: 13px; }
+  td.row-actions button + button { margin-left: 6px; }
+  .section-title { margin: 28px 0 10px; }
+
+  /* Pastilles */
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+    font-weight: 600; background: var(--neutral-soft); color: var(--muted); white-space: nowrap; }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.success { background: var(--success-soft); color: var(--success); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.danger { background: var(--danger-soft); color: var(--danger); }
+  .badge.info { background: var(--info-soft); color: var(--info); }
+  .pos { color: var(--success); font-weight: 600; }
+  .neg { color: var(--danger); font-weight: 600; }
+
+  /* Boutons et champs */
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button, .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px;
+    border: 1px solid var(--line-strong); background: var(--card); color: var(--fg); border-radius: 8px; cursor: pointer;
+    font-weight: 500; text-decoration: none; white-space: nowrap; transition: background .12s, border-color .12s, box-shadow .12s; }
+  button:hover:not(:disabled), .button:hover { background: var(--neutral-soft); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button.primary:hover:not(:disabled), .button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--line-strong)); }
+  button.danger:hover:not(:disabled) { background: var(--danger-soft); }
+  input:not([type=checkbox]):not([type=color]):not([type=file]), select, textarea {
+    min-height: 34px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input:disabled, select:disabled, textarea:disabled { background: var(--neutral-soft); color: var(--muted); }
+  input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  input[type=color] { width: 56px; height: 34px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); }
+  input[type=file] { max-width: 100%; }
+  input[type=file]::file-selector-button { font: inherit; margin-right: 10px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong);
+    border-radius: 8px; background: var(--card); color: var(--fg); cursor: pointer; }
+  textarea { resize: vertical; }
+
+  /* Formulaires */
+  form.grid { display: grid; grid-template-columns: 180px 1fr; gap: 12px 16px; align-items: center; }
+  form.grid > label { color: var(--muted); font-weight: 500; }
+  form.grid input:not([type=checkbox]):not([type=color]):not([type=file]), form.grid select, form.grid textarea { width: 100%; }
+  form.grid input[type=checkbox] { justify-self: start; }
+  @media (max-width: 600px) { form.grid { grid-template-columns: 1fr; gap: 6px; } form.grid > label { margin-top: 6px; } }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
+  .lines { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .lines table th { padding: 6px 8px; }
+  .lines table td { padding: 4px 8px; border: 0; }
+  .lines input, .lines select { width: 100%; }
+  .perms td { padding: 3px 12px 3px 0; border: 0; }
+
+  /* Dialogue */
+  dialog { border: 0; border-radius: 16px; padding: 0; width: min(680px, 95vw); max-height: 90vh; background: var(--card);
+    color: var(--fg); box-shadow: var(--shadow-lg); }
+  dialog::backdrop { background: rgb(15 20 30 / .45); backdrop-filter: blur(2px); }
+  dialog > h3 { margin: 0; padding: 18px 24px; border-bottom: 1px solid var(--line); font-size: 17px; }
+  dialog > form { padding: 20px 24px 24px; }
+
+  /* Touches de caisse */
+  .keys { display: grid; gap: 10px; }
+  .keys button { height: 84px; padding: 6px; border: 0; border-radius: 12px; color: #fff; font-weight: 600; white-space: normal;
+    box-shadow: var(--shadow); text-shadow: 0 1px 1px rgb(0 0 0 / .25); transition: transform .1s, filter .1s; }
+  .keys button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+  .keys button.empty { background: transparent; color: var(--muted); border: 1.5px dashed var(--line-strong);
+    box-shadow: none; text-shadow: none; font-size: 20px; }
+  .keys button.empty:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); transform: none; }
+
+  /* Connexion */
+  #login { width: min(380px, calc(100vw - 32px)); margin: 12vh auto; padding: 32px; display: flex; flex-direction: column; gap: 14px; }
+  #login h2 { margin: 0 0 4px; text-align: center; }
+  #login label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; }
+  #login input { width: 100%; }
+  #login button { height: 40px; margin-top: 4px; }
+  #login img { display: block; max-width: 100%; max-height: 90px; margin: 0 auto; }
+  #login-error { color: var(--danger); margin: 0; min-height: 1.5em; text-align: center; }
+  .logo-preview { display: block; max-width: 260px; max-height: 120px; padding: 12px; margin: 12px 0;
+    border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+
+  /* Notifications */
+  .toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 1000;
+    max-width: min(420px, calc(100vw - 40px)); }
+  .toast { background: var(--card); color: var(--fg); border: 1px solid var(--line); border-left: 4px solid var(--success);
+    border-radius: 10px; box-shadow: var(--shadow-lg); padding: 12px 16px; white-space: pre-line; cursor: pointer;
+    animation: toast-in .18s ease-out; }
+  .toast.danger { border-left-color: var(--danger); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
-<form id="login" class="hidden">
+<form id="login" class="hidden card">
   <img id="login-logo" class="hidden" alt="">
   <h2 id="login-title">LocalMerch</h2>
   <label>Identifiant<input name="username" autocomplete="username" required autofocus></label>
@@ -99,6 +215,15 @@ function h(tag, props = {}, ...kids) {
   return e;
 }
 
+/** Notification discrète ; affichée dans le dialogue ouvert, sinon il la masquerait. */
+function toast(message, tone = 'success') {
+  const host = $('#dialog').open ? $('#dialog') : document.body;
+  const box = host.querySelector(':scope > .toasts') ?? host.appendChild(h('div', { className: 'toasts', role: 'status', ariaLive: 'polite' }));
+  const t = h('div', { className: 'toast ' + tone, onclick: () => t.remove() }, message);
+  box.append(t);
+  setTimeout(() => t.remove(), tone === 'danger' ? 7000 : 3500);
+}
+
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api/' + path, {
     method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined,
@@ -107,7 +232,7 @@ async function api(path, method = 'GET', body) {
   if (!r.ok) {
     let msg = r.statusText;
     try { const j = await r.json(); msg = j.error || Object.entries(j.errors || {}).map(([k, v]) => `${k} : ${v.join(', ')}`).join('\n') || j.title || msg; } catch {}
-    alert(msg);
+    toast(msg, 'danger');
     throw new Error(msg);
   }
   return r.status === 204 ? null : r.json();
@@ -130,6 +255,10 @@ const cache = { products: [], suppliers: [] };
 const nameOf = (list, id) => cache[list].find(x => x.id === id)?.name ?? '';
 const choices = list => () => cache[list].map(x => [x.id, x.name]);
 const enumChoices = (...values) => () => values.map(v => [v, L[v]]);
+const badge = (text, tone = '') => h('span', { className: 'badge ' + tone }, text);
+const yesNo = v => v ? badge('Oui', 'success') : badge('Non');
+const statusTone = { Pending: 'warn', Accepted: 'success', Rejected: 'danger', Draft: '', Sent: 'info', Received: 'success', Cancelled: 'danger' };
+const statusBadge = v => badge(L[v], statusTone[v]);
 async function loadLookups() {
   ({ products: cache.products, suppliers: cache.suppliers } = await api('lookups'));
 }
@@ -155,7 +284,7 @@ const schemas = {
       { name: 'active', label: 'En vente', type: 'checkbox' },
     ],
     columns: [['Nom', p => p.name], ['Code-barres', p => p.barcode], ['Prix', p => money(p.price), 'num'],
-      ['TVA', p => p.vatRate + ' %', 'num'], ['Fournisseur', p => nameOf('suppliers', p.supplierId)], ['En vente', p => p.active ? 'Oui' : 'Non']],
+      ['TVA', p => p.vatRate + ' %', 'num'], ['Fournisseur', p => nameOf('suppliers', p.supplierId)], ['En vente', p => yesNo(p.active)]],
   },
   suppliers: {
     title: 'Fournisseurs', path: 'suppliers', newItem: () => ({}),
@@ -182,10 +311,10 @@ const schemas = {
       { name: 'status', label: 'Statut', type: 'select', options: enumChoices('Pending', 'Rejected'), required: true },
       { name: 'notes', label: 'Notes', type: 'textarea' },
     ],
-    columns: [['N°', q => q.id], ['Fournisseur', q => nameOf('suppliers', q.supplierId)], ['Référence', q => q.reference],
-      ['Date', q => date(q.createdAt)], ['Validité', q => q.validUntil], ['Statut', q => L[q.status]], ['Total', q => money(q.total), 'num']],
+    columns: [['N°', q => q.id], ['Fournisseur', q => nameOf('suppliers', q.supplierId)], ['Référence', q => q.reference, 'nowrap'],
+      ['Date', q => date(q.createdAt), 'nowrap'], ['Validité', q => q.validUntil, 'nowrap'], ['Statut', q => statusBadge(q.status)], ['Total', q => money(q.total), 'num']],
     editable: q => q.status !== 'Accepted',
-    actions: q => q.status === 'Pending' && can('orders') && h('button', { onclick: () => act(`quotes/${q.id}/convert`, 'Convertir ce devis en commande ?') }, 'Convertir en commande'),
+    actions: q => q.status === 'Pending' && can('orders') && h('button', { onclick: () => act(`quotes/${q.id}/convert`, 'Convertir ce devis en commande ?', 'Commande créée à partir du devis.') }, 'Convertir en commande'),
   },
   orders: {
     title: 'Commandes fournisseurs', path: 'orders', lines: true, newItem: () => ({ status: 'Draft', lines: [] }),
@@ -194,10 +323,10 @@ const schemas = {
       { name: 'status', label: 'Statut', type: 'select', options: enumChoices('Draft', 'Sent', 'Cancelled'), required: true },
       { name: 'notes', label: 'Notes', type: 'textarea' },
     ],
-    columns: [['N°', o => o.id], ['Fournisseur', o => nameOf('suppliers', o.supplierId)], ['Date', o => date(o.createdAt)],
-      ['Devis', o => o.quoteId], ['Statut', o => L[o.status]], ['Reçue le', o => date(o.receivedAt)], ['Total', o => money(o.total), 'num']],
+    columns: [['N°', o => o.id], ['Fournisseur', o => nameOf('suppliers', o.supplierId)], ['Date', o => date(o.createdAt), 'nowrap'],
+      ['Devis', o => o.quoteId], ['Statut', o => statusBadge(o.status)], ['Reçue le', o => date(o.receivedAt), 'nowrap'], ['Total', o => money(o.total), 'num']],
     editable: o => o.status !== 'Received',
-    actions: o => ['Draft', 'Sent'].includes(o.status) && h('button', { onclick: () => act(`orders/${o.id}/receive`, 'Réceptionner la commande et entrer les quantités en stock ?') }, 'Réceptionner'),
+    actions: o => ['Draft', 'Sent'].includes(o.status) && h('button', { onclick: () => act(`orders/${o.id}/receive`, 'Réceptionner la commande et entrer les quantités en stock ?', 'Commande réceptionnée, stock mis à jour.') }, 'Réceptionner'),
   },
   // Administrateur : tout. Utilisateur : seulement les pages métier que lui donnent ses droits.
   users: {
@@ -210,8 +339,8 @@ const schemas = {
       { name: 'password', label: 'Mot de passe (vide = inchangé, 8 caractères min.)', type: 'password', autocomplete: 'new-password' },
       { name: 'permissions', label: 'Droits par page (sans effet pour un administrateur)', type: 'permissions' },
     ],
-    columns: [['Nom', u => u.displayName], ['Identifiant', u => u.login], ['Rôle', u => L[u.role]],
-      ['Actif', u => u.active ? 'Oui' : 'Non'], ['Mot de passe', u => u.hasPassword ? 'Oui' : 'Non'],
+    columns: [['Nom', u => u.displayName], ['Identifiant', u => u.login], ['Rôle', u => badge(L[u.role], u.role === 'Admin' ? 'info' : '')],
+      ['Actif', u => yesNo(u.active)], ['Mot de passe', u => yesNo(u.hasPassword)],
       ['Droits', u => u.role === 'Admin' ? 'Toutes les pages' : u.permissions.map(p =>
         `${allViews[p.page.toLowerCase()][0]} (${p.access === 'Write' ? 'modif.' : 'lecture'})`).join(', ') || 'Aucun']],
   },
@@ -231,9 +360,10 @@ const schemas = {
   },
 };
 
-async function act(path, question) {
+async function act(path, question, done = 'Opération effectuée.') {
   if (!confirm(question)) return;
   await api(path, 'POST');
+  toast(done);
   render();
 }
 
@@ -300,7 +430,7 @@ function openForm(schema, item, onDone, readOnly = false) {
       : [
         item.id && h('button', { type: 'button', className: 'danger', style: 'margin-right:auto', onclick: async () => {
           if (!confirm('Supprimer définitivement ?')) return;
-          await api(`${schema.path}/${item.id}`, 'DELETE'); dlg.close(); onDone();
+          await api(`${schema.path}/${item.id}`, 'DELETE'); dlg.close(); toast('Supprimé.'); onDone();
         } }, 'Supprimer'),
         h('button', { type: 'button', onclick: () => dlg.close() }, 'Annuler'),
         h('button', { className: 'primary' }, 'Enregistrer'),
@@ -314,19 +444,22 @@ function openForm(schema, item, onDone, readOnly = false) {
     if (item.id) await api(`${schema.path}/${item.id}`, 'PUT', data);
     else await api(schema.path, 'POST', data);
     dlg.close();
+    toast('Enregistré.');
     onDone();
   });
   dlg.replaceChildren(h('h3', {}, (readOnly ? 'Consulter — ' : item.id ? 'Modifier — ' : 'Nouveau — ') + schema.title), form);
   dlg.showModal();
 }
 
-function table(columns, rows, extra) {
-  return h('table', {},
-    h('thead', {}, h('tr', {}, columns.map(([t, , cls]) => h('th', { className: cls }, t)), extra && h('th'))),
+/** Une cellule peut renvoyer du texte ou un élément (pastille…). */
+function table(columns, rows, extra, empty = 'Aucun élément pour le moment.') {
+  const cell = v => v instanceof Node ? v : String(v ?? '');
+  return h('div', { className: 'card table-wrap' }, h('table', {},
+    h('thead', {}, h('tr', {}, columns.map(([t, , cls]) => h('th', { className: cls }, t)), extra && h('th', { ariaLabel: 'Actions' }))),
     h('tbody', {}, rows.length ? rows.map(r => h('tr', {},
-      columns.map(([, get, cls]) => h('td', { className: cls }, String(get(r) ?? ''))),
-      extra && h('td', { style: 'white-space:nowrap' }, extra(r))))
-      : h('tr', {}, h('td', { colSpan: columns.length + 1, className: 'muted' }, 'Aucun élément.'))));
+      columns.map(([, get, cls]) => h('td', { className: cls }, cell(get(r)))),
+      extra && h('td', { className: 'row-actions' }, extra(r))))
+      : h('tr', {}, h('td', { colSpan: columns.length + (extra ? 1 : 0), className: 'empty' }, empty)))));
 }
 
 async function listView(key) {
@@ -361,7 +494,8 @@ async function keysView() {
   const pageInput = h('input', { type: 'number', min: 0, max: 99, value: keyPage, style: 'width:70px',
     onchange: e => { keyPage = Number(e.target.value) || 0; render(); } });
   return [
-    h('div', { className: 'toolbar' }, h('h2', {}, 'Touches de la caisse'), h('label', {}, 'Page ', pageInput)),
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Touches de la caisse'),
+      h('label', { style: 'display:flex; align-items:center; gap:8px' }, h('span', { className: 'muted' }, 'Page'), pageInput)),
     h('p', { className: 'muted' }, editable
       ? 'Cliquez sur une case pour créer ou modifier une touche. La caisse se met à jour immédiatement.'
       : 'Consultation seule : cliquez sur une touche pour voir son réglage.'),
@@ -371,8 +505,8 @@ async function keysView() {
 
 async function stockView() {
   const [levels, movements] = await Promise.all([api('stock'), api('stock/movements')]);
-  const form = h('form', { className: 'toolbar' },
-    h('select', { name: 'productId', required: true }, h('option', { value: '' }, 'Produit…'),
+  const form = h('form', { className: 'toolbar', style: 'margin:12px 0 0' },
+    h('select', { name: 'productId', required: true, ariaLabel: 'Produit' }, h('option', { value: '' }, 'Produit…'),
       cache.products.map(p => h('option', { value: p.id }, p.name))),
     h('select', { name: 'type' }, ['In', 'Out', 'Adjustment'].map(t => h('option', { value: t }, L[t]))),
     h('input', { name: 'quantity', type: 'number', step: 1, required: true, placeholder: 'Quantité', style: 'width:110px' }),
@@ -384,15 +518,18 @@ async function stockView() {
     await api('stock/movements', 'POST', {
       productId: Number(d.get('productId')), type: d.get('type'), quantity: Number(d.get('quantity')), reason: d.get('reason') || null,
     });
+    toast('Mouvement enregistré.');
     render();
   });
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Stock')),
-    ...(can('stock') ? [h('p', { className: 'muted' }, 'Entrée / sortie : quantité positive. Ajustement : quantité signée (ex. -2 pour casse).'), form] : []),
-    table([['Produit', l => l.name], ['En vente', l => l.active ? 'Oui' : 'Non'], ['Quantité', l => l.quantity, 'num']], levels),
-    h('h3', {}, 'Derniers mouvements'),
-    table([['Date', m => date(m.at)], ['Produit', m => nameOf('products', m.productId)], ['Type', m => L[m.type]],
-      ['Quantité', m => (m.quantity > 0 ? '+' : '') + m.quantity, 'num'], ['Motif', m => m.reason],
+    can('stock') && h('section', { className: 'card pad' }, h('h3', {}, 'Nouveau mouvement'),
+      h('p', { className: 'muted' }, 'Entrée / sortie : quantité positive. Ajustement : quantité signée (ex. -2 pour casse).'), form),
+    table([['Produit', l => l.name], ['En vente', l => yesNo(l.active)],
+      ['Quantité', l => l.quantity <= 0 ? badge(String(l.quantity), 'danger') : l.quantity, 'num']], levels),
+    h('h3', { className: 'section-title' }, 'Derniers mouvements'),
+    table([['Date', m => date(m.at), 'nowrap'], ['Produit', m => nameOf('products', m.productId)], ['Type', m => L[m.type]],
+      ['Quantité', m => h('span', { className: m.quantity > 0 ? 'pos' : 'neg' }, (m.quantity > 0 ? '+' : '') + m.quantity), 'num'], ['Motif', m => m.reason],
       ['Origine', m => m.saleId ? `Vente ${m.saleId}` : m.purchaseOrderId ? `Commande ${m.purchaseOrderId}` : '']], movements),
   ];
 }
@@ -402,12 +539,12 @@ async function salesView() {
   const refunded = new Set(sales.map(s => s.refundOfSaleId).filter(Boolean));
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Ventes (200 dernières)')),
-    table([['N°', s => s.id], ['Date', s => date(s.at)], ['Paiement', s => L[s.paymentMethod]],
+    table([['N°', s => s.id], ['Date', s => date(s.at), 'nowrap'], ['Paiement', s => L[s.paymentMethod]],
       ['Détail', s => s.lines.map(l => `${l.quantity} × ${l.label}`).join(', ')],
-      ['Remb.', s => s.refundOfSaleId ? `de ${s.refundOfSaleId}` : refunded.has(s.id) ? 'remboursée' : ''],
+      ['Remboursement', s => s.refundOfSaleId ? badge(`de la vente ${s.refundOfSaleId}`, 'info') : refunded.has(s.id) ? badge('Remboursée', 'warn') : ''],
       ['Total', s => money(s.total), 'num']], sales,
       s => can('sales') && !s.refundOfSaleId && !refunded.has(s.id) &&
-        h('button', { className: 'danger', onclick: () => act(`sales/${s.id}/refund`, `Rembourser la vente n°${s.id} ?`) }, 'Rembourser')),
+        h('button', { className: 'danger', onclick: () => act(`sales/${s.id}/refund`, `Rembourser la vente n°${s.id} ?`, 'Vente remboursée.') }, 'Rembourser')),
   ];
 }
 
@@ -438,12 +575,13 @@ async function terminalView() {
     const data = {};
     for (const [f, el] of inputs) data[f.name] = readField(f, el);
     await api('terminal', 'PUT', data);
-    say('Configuration enregistrée.');
+    say('');
+    toast('Configuration du TPE enregistrée.');
   });
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Terminal de paiement (TPE)')),
     h('p', { className: 'muted' }, 'Le test vérifie que le TPE répond sur le réseau, avec la configuration enregistrée.'),
-    form, status,
+    h('section', { className: 'card pad', style: 'max-width:640px' }, form, status),
   ];
 }
 
@@ -461,38 +599,40 @@ async function applyBranding() {
 async function configView() {
   await applyBranding();
   const title = h('input', { name: 'title', required: true, maxLength: 100, value: branding.title });
-  const form = h('form', { className: 'grid', style: 'max-width:560px' },
+  const form = h('form', { className: 'grid', style: 'max-width:560px; margin-top:12px' },
     h('label', {}, 'Titre'), title,
     h('div', { className: 'actions' }, h('button', { className: 'primary' }, 'Enregistrer le titre')));
   form.addEventListener('submit', async e => {
     e.preventDefault();
     await api('branding', 'PUT', { title: title.value });
+    toast('Titre enregistré.');
     render();
   });
   const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif' });
   const upload = async () => {
     const f = file.files[0];
-    if (!f) return alert('Choisissez une image.');
-    if (f.size > 512 * 1024) return alert('Logo trop lourd (512 Ko maximum).');
+    if (!f) return toast('Choisissez une image.', 'danger');
+    if (f.size > 512 * 1024) return toast('Logo trop lourd (512 Ko maximum).', 'danger');
     const r = await fetch('/api/branding/logo', { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
-    if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch {} return alert(msg); }
+    if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch {} return toast(msg, 'danger'); }
+    toast('Logo enregistré.');
     render();
   };
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Configuration')),
-    h('h3', {}, 'Apparence'),
-    h('p', { className: 'muted' }, 'Le titre et le logo s\'affichent sur la page de connexion, dans cette administration et sur la caisse.'),
-    form,
-    h('h3', {}, 'Logo'),
-    branding.hasLogo ? h('img', { className: 'logo-preview', src: '/logo?' + Date.now(), alt: 'Logo actuel' }) : h('p', { className: 'muted' }, 'Aucun logo.'),
-    h('div', { className: 'toolbar', style: 'margin-top:8px' }, file,
-      h('button', { className: 'primary', onclick: upload }, 'Envoyer le logo'),
-      branding.hasLogo && h('button', { className: 'danger', onclick: async () => {
-        if (!confirm('Supprimer le logo ?')) return;
-        await api('branding/logo', 'DELETE'); render();
-      } }, 'Supprimer le logo')),
-    h('p', { className: 'muted' }, 'PNG, JPEG, WebP ou GIF, 512 Ko maximum. Un logo horizontal sur fond transparent rend le mieux.'),
-    ...backupSection(),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Apparence'),
+      h('p', { className: 'muted' }, 'Le titre et le logo s\'affichent sur la page de connexion, dans cette administration et sur la caisse.'),
+      form),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Logo'),
+      branding.hasLogo ? h('img', { className: 'logo-preview', src: '/logo?' + Date.now(), alt: 'Logo actuel' }) : h('p', { className: 'muted' }, 'Aucun logo.'),
+      h('div', { className: 'toolbar', style: 'margin:12px 0 4px' }, file,
+        h('button', { className: 'primary', onclick: upload }, 'Envoyer le logo'),
+        branding.hasLogo && h('button', { className: 'danger', onclick: async () => {
+          if (!confirm('Supprimer le logo ?')) return;
+          await api('branding/logo', 'DELETE'); toast('Logo supprimé.'); render();
+        } }, 'Supprimer le logo')),
+      h('p', { className: 'muted', style: 'margin:0' }, 'PNG, JPEG, WebP ou GIF, 512 Ko maximum. Un logo horizontal sur fond transparent rend le mieux.')),
+    backupSection(),
   ];
 }
 
@@ -501,7 +641,7 @@ function backupSection() {
   const status = h('p', { className: 'muted' });
   const restore = async () => {
     const f = file.files[0];
-    if (!f) return alert('Choisissez un fichier de sauvegarde (.db).');
+    if (!f) return toast('Choisissez un fichier de sauvegarde (.db).', 'danger');
     if (!confirm(`Remplacer TOUTES les données et la configuration par « ${f.name} » ?\n\n` +
       'La base actuelle sera conservée dans le dossier « backups » du serveur. Vous devrez peut-être vous reconnecter.')) return;
     status.textContent = 'Restauration en cours…';
@@ -512,15 +652,14 @@ function backupSection() {
     alert(body.message);
     location.reload();
   };
-  return [
+  return h('section', { className: 'card pad' },
     h('h3', {}, 'Sauvegarde et restauration'),
     h('p', { className: 'muted' }, 'La sauvegarde contient toutes les données et toute la configuration : produits, touches, ' +
       'fournisseurs, devis, commandes, stock, ventes, utilisateurs, TPE, titre et logo. ' +
       'Les réglages système du fichier appsettings.json (port, taille de la grille) n\'en font pas partie.'),
-    h('div', { className: 'toolbar' }, h('a', { href: '/api/backup', download: '' }, h('button', { type: 'button', className: 'primary' }, 'Télécharger une sauvegarde'))),
-    h('div', { className: 'toolbar' }, file, h('button', { className: 'danger', onclick: restore }, 'Restaurer cette sauvegarde')),
-    status,
-  ];
+    h('div', { className: 'toolbar', style: 'margin-top:12px' }, h('a', { className: 'button primary', href: '/api/backup', download: '' }, 'Télécharger une sauvegarde')),
+    h('div', { className: 'toolbar', style: 'margin:0' }, file, h('button', { className: 'danger', onclick: restore }, 'Restaurer cette sauvegarde')),
+    status);
 }
 
 // --- Navigation ---
@@ -543,10 +682,12 @@ const icons = {
 const icon = name => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`; return t.content.firstChild; };
 const sideButton = (name, label, props = {}) => h('button', { className: 'side-btn', title: label, ...props }, icon(name), h('span', { className: 'label' }, label));
 
-// Menu replié ou non : préférence propre à ce navigateur. Replié par défaut sur petit écran.
+// Menu replié ou non : préférence propre à ce navigateur, sur grand écran seulement.
+// Sur petit écran, il démarre replié et se replie après chaque choix.
+const narrow = () => innerWidth <= 700;
 let collapsed;
 try { collapsed = localStorage.getItem('sidebar-collapsed'); } catch {}
-collapsed = collapsed == null ? innerWidth < 700 : collapsed === '1';
+collapsed = narrow() || collapsed === '1';
 function applyCollapse() {
   $('#sidebar').classList.toggle('collapsed', collapsed);
   const label = collapsed ? 'Déplier le menu' : 'Replier le menu';
@@ -556,7 +697,7 @@ function applyCollapse() {
 }
 $('#collapse').addEventListener('click', () => {
   collapsed = !collapsed;
-  try { localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+  if (!narrow()) try { localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
   applyCollapse();
 });
 $('#logout').append(icon('logout'), h('span', { className: 'label' }, 'Déconnexion'));
@@ -584,13 +725,17 @@ async function render() {
     const allowed = keys.filter(k => k in views);
     if (!allowed.length) return [];
     return [h('div', { className: 'side-section', role: 'heading', ariaLevel: '2' }, title), ...allowed.map(k => {
-      const b = sideButton(k, views[k][0], { onclick: () => { current = k; location.hash = k; render(); } });
+      const b = sideButton(k, views[k][0], { onclick: () => {
+        current = k; location.hash = k;
+        if (narrow() && !collapsed) { collapsed = true; applyCollapse(); }
+        render();
+      } });
       if (k === current) { b.classList.add('active'); b.setAttribute('aria-current', 'page'); }
       return b;
     })];
   }));
   await loadLookups();
-  $('#view').replaceChildren(...(await views[current][1]()));
+  $('#view').replaceChildren(...[await views[current][1]()].flat(Infinity).filter(x => x != null && x !== false));
 }
 
 function showLogin() {
