@@ -150,6 +150,12 @@ public class Ticket
         if (--Lines[^1].Quantity == 0) Lines.RemoveAt(Lines.Count - 1);
     }
 
+    /// <summary>Retire toute la ligne, quelle que soit sa quantité.</summary>
+    public void RemoveLine(int index)
+    {
+        if (index >= 0 && index < Lines.Count) Lines.RemoveAt(index);
+    }
+
     public void Clear() => Lines.Clear();
 }
 

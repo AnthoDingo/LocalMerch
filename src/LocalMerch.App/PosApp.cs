@@ -285,6 +285,10 @@ public class PosWindow : Window
                 else status.Text = "Produit indisponible.";
                 break;
             case KeyAction.VoidLast: ticket.VoidLast(); break;
+            case KeyAction.VoidSelected:
+                if (ticketList.SelectedIndex < 0) status.Text = "Touchez d'abord une ligne du ticket.";
+                else ticket.RemoveLine(ticketList.SelectedIndex);
+                break;
             case KeyAction.ClearTicket: ticket.Clear(); break;
             case KeyAction.PayCash: Pay(PaymentMethod.Cash); break;
             case KeyAction.PayCard: Pay(PaymentMethod.Card); break;

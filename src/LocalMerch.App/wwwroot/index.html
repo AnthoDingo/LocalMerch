@@ -91,7 +91,7 @@ const L = {
   Product: 'Produit', VoidLast: 'Annuler la dernière ligne', ClearTicket: 'Vider le ticket',
   PayCash: 'Payer en espèces', PayCard: 'Payer par carte', GoToPage: 'Aller à la page',
   CaisseAp: 'Caisse-AP (IP)', Concert: 'Concert (IP)',
-  Cheque: 'Chèque', PayCheque: 'Payer par chèque', FreeAmount: 'Montant libre',
+  Cheque: 'Chèque', PayCheque: 'Payer par chèque', FreeAmount: 'Montant libre', VoidSelected: 'Annuler la ligne sélectionnée',
   Manager: 'Responsable', Admin: 'Administrateur',
 };
 const money = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -179,7 +179,7 @@ const schemas = {
     fields: [
       { name: 'label', label: 'Libellé', required: true },
       { name: 'color', label: 'Couleur', type: 'color' },
-      { name: 'action', label: 'Action', type: 'select', options: enumChoices('Product', 'FreeAmount', 'VoidLast', 'ClearTicket', 'PayCash', 'PayCard', 'PayCheque', 'GoToPage'), required: true },
+      { name: 'action', label: 'Action', type: 'select', options: enumChoices('Product', 'FreeAmount', 'VoidLast', 'VoidSelected', 'ClearTicket', 'PayCash', 'PayCard', 'PayCheque', 'GoToPage'), required: true },
       { name: 'productId', label: 'Produit', type: 'select', options: choices('products') },
       { name: 'targetPage', label: 'Page cible', type: 'number', min: 0, max: 99 },
       { name: 'page', label: 'Page', type: 'number', min: 0, max: 99, required: true },

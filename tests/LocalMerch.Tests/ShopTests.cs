@@ -46,6 +46,11 @@ public sealed class ShopTests : IDisposable
         t.VoidLast();
         t.VoidLast();
         Assert.Equal(1.50m, t.Total);
+
+        t.Add(tea);
+        t.RemoveLine(0); // la ligne de café, entière
+        t.RemoveLine(5); // hors limites : ignoré
+        Assert.Equal("Thé", Assert.Single(t.Lines).Label);
     }
 
     [Fact]

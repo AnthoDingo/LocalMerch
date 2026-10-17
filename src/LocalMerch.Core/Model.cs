@@ -27,7 +27,7 @@ public class Product : IEntity
 }
 
 // Nouvelles valeurs uniquement en fin de liste : stockées en base sous forme d'entier.
-public enum KeyAction { Product, VoidLast, ClearTicket, PayCash, PayCard, GoToPage, PayCheque, FreeAmount }
+public enum KeyAction { Product, VoidLast, ClearTicket, PayCash, PayCard, GoToPage, PayCheque, FreeAmount, VoidSelected }
 
 public class PosKey : IEntity, IValidatableObject
 {
