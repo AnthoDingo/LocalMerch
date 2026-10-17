@@ -2,7 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Controls.Documents;
+using Avalonia.Styling;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -289,8 +289,8 @@ public class PosWindow : Window
                 },
             },
         };
-        TextElement.SetForeground(box, Brushes.Black); // lisible sur fond blanc, même en thème sombre
-        exitDialog.Children.Add(box);
+        // Fond blanc : thème clair forcé, sinon en thème sombre le texte et les touches sont blancs.
+        exitDialog.Children.Add(new ThemeVariantScope { RequestedThemeVariant = ThemeVariant.Light, Child = box });
     }
 
     void OnTotalTap()
