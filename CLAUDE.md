@@ -59,7 +59,7 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 - **Devis** : il s'agit de devis *fournisseurs*.
 - **Devis → commande** : un devis peut être converti en commande ; la commande garde la référence du devis.
 - **Réception de commande** : génère les mouvements d'entrée de stock correspondants.
-- **Montant libre** : une touche `FreeAmount` ouvre un écran de saisie. Elle sert aux commandes passées sur un catalogue extérieur : on saisit le montant TTC, la TVA et le n° de bon, puis on paie (CB, espèces, chèque). La ligne n'a pas de produit (`ProductId` null), donc elle ne crée aucun mouvement de stock.
+- **Montant libre** : une page dédiée, ouverte uniquement par une touche `FreeAmount`. Elle sert aux commandes passées sur un catalogue extérieur : on saisit le montant TTC et le n° de bon, puis on paie (CB, espèces, chèque). Le paiement porte sur un ticket séparé, sans toucher au ticket en cours. La TVA n'est pas demandée : on applique `Pos:FreeAmountVatRate` (20 % par défaut). La ligne n'a pas de produit (`ProductId` null), donc elle ne crée aucun mouvement de stock.
 - **TPE réseau** : sa configuration (`PaymentTerminal`, une seule ligne, Id = 1) se fait dans l'onglet TPE de l'admin. Le protocole de paiement (Caisse-AP / Concert) n'est **pas encore implémenté** : le bouton « Payer par carte » enregistre la vente sans interroger le TPE.
 - Horodatage en UTC en base, affichage en heure locale.
 
@@ -103,6 +103,7 @@ dotnet publish src/LocalMerch.App -c Release -r linux-x64 --self-contained -o pu
 - `Admin:Password` : mot de passe du compte `admin`, créé quand aucun administrateur actif n'existe. S'il est vide, un mot de passe est généré dans `<données>/admin-password.txt`.
 - `Admin:AllowRemote` : `false` par défaut (seuls le loopback et les réseaux privés sont acceptés).
 - `Pos:Rows`, `Pos:Columns`, `Pos:FullScreen` : grille des touches et plein écran.
+- `Pos:FreeAmountVatRate` : taux de TVA des montants libres (20 par défaut).
 - `Culture` : `fr-FR` (format monétaire).
 - Le dossier de données vaut `LOCALMERCH_DATA`, sinon `ApplicationData/LocalMerch` (`~/.config/LocalMerch` sous Linux). Il contient la base `localmerch.db`, qui est migrée automatiquement au démarrage.
 - Sous Linux, ICU (`libicu`) doit être installé pour la culture fr-FR.

@@ -126,4 +126,6 @@ public record PosOptions
     public int Rows { get; init; } = 6;
     public int Columns { get; init; } = 5;
     public bool FullScreen { get; init; } = true;
+    /// <summary>TVA appliquée aux montants libres (non demandée à la caisse).</summary>
+    public decimal FreeAmountVatRate { get; init; } = 20m;
 }

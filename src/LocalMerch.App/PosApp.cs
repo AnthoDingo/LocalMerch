@@ -44,7 +44,6 @@ public class PosApp : Application
 public class PosWindow : Window
 {
     const int DesignWidth = 1024, DesignHeight = 768;
-    static readonly decimal[] VatRates = [20m, 10m, 5.5m, 2.1m];
 
     readonly IServiceProvider services;
     readonly PosOptions options;
@@ -60,12 +59,12 @@ public class PosWindow : Window
     readonly Image headerLogo = new() { Height = 36, Margin = new Thickness(0, 0, 8, 0) };
 
     // Montant libre
-    readonly Border freeScreen = Overlay();
+    // Page « Montant libre », ouverte uniquement par une touche FreeAmount.
+    readonly Control saleScreen;
+    readonly DockPanel freePage = new() { IsVisible = false };
     readonly TextBox freeReference = new() { PlaceholderText = "N° du bon de commande (facultatif)", FontSize = 18, Width = 380 };
-    readonly TextBox freeAmount = new() { FontSize = 36, Width = 380, IsReadOnly = true, HorizontalContentAlignment = HorizontalAlignment.Right };
-    readonly WrapPanel vatButtons = new() { HorizontalAlignment = HorizontalAlignment.Center };
+    readonly TextBox freeAmount = new() { FontSize = 36, Width = 380, IsReadOnly = true, PlaceholderText = "0,00 €", HorizontalContentAlignment = HorizontalAlignment.Right };
     readonly TextBlock freeError = new() { FontSize = 16, Foreground = Brushes.OrangeRed, HorizontalAlignment = HorizontalAlignment.Center };
-    decimal freeVat = VatRates[0];
 
     List<PosKey> keys = [];
     Dictionary<int, Product> products = [];
@@ -80,6 +79,7 @@ public class PosWindow : Window
         Height = DesignHeight;
         if (options.FullScreen) WindowState = WindowState.FullScreen;
 
+        saleScreen = SaleScreen();
         Content = new Viewbox
         {
             Stretch = Stretch.Uniform,
@@ -87,10 +87,10 @@ public class PosWindow : Window
             {
                 Width = DesignWidth,
                 Height = DesignHeight,
-                Children = { SaleScreen(), freeScreen },
+                Children = { saleScreen, freePage },
             },
         };
-        BuildFreeScreen();
+        BuildFreePage();
 
         barcode.AddHandler(KeyDownEvent, OnBarcodeKey, RoutingStrategies.Tunnel);
         LocalMerchDb.CatalogChanged += OnCatalogChanged;
@@ -99,8 +99,6 @@ public class PosWindow : Window
         Reload();
         RefreshTicket();
     }
-
-    static Border Overlay() => new() { Background = new SolidColorBrush(Color.Parse("#F2181818")), IsVisible = false };
 
     Control SaleScreen()
     {
@@ -135,7 +133,7 @@ public class PosWindow : Window
             var label = labels[i];
             var b = new Button
             {
-                Content = label, FontSize = 26, Height = 64, Margin = new Thickness(3),
+                Content = label, FontSize = 26, Height = 64, Margin = new Thickness(3), VerticalContentAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center,
             };
             b.Click += (_, _) => press(label);
@@ -148,14 +146,8 @@ public class PosWindow : Window
 
     // ---------- Montant libre ----------
 
-    void BuildFreeScreen()
+    void BuildFreePage()
     {
-        foreach (var rate in VatRates)
-        {
-            var b = new Button { Content = $"TVA {rate.ToString(CultureInfo.CurrentCulture)} %", FontSize = 16, Margin = new Thickness(4), Padding = new Thickness(12, 8) };
-            b.Click += (_, _) => { freeVat = rate; RenderVat(); };
-            vatButtons.Children.Add(b);
-        }
         var keypad = Keypad(k =>
         {
             var text = freeAmount.Text ?? "";
@@ -179,24 +171,40 @@ public class PosWindow : Window
             {
                 Content = label, FontSize = 20, Height = 64, Width = 170, Foreground = Brushes.White,
                 Background = Brush.Parse(color), HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
             };
             b.Click += (_, _) => PayFreeAmount(method);
             pay.Children.Add(b);
         }
-        var cancel = new Button { Content = "Annuler", FontSize = 18, HorizontalAlignment = HorizontalAlignment.Center };
-        cancel.Click += (_, _) => freeScreen.IsVisible = false;
-
-        freeScreen.Child = new StackPanel
+        var back = new Button { Content = "← Retour à la caisse", FontSize = 18, Padding = new Thickness(16, 10) };
+        back.Click += (_, _) => ShowSaleScreen();
+        var header = new Grid { Margin = new Thickness(12), ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var title = new TextBlock
         {
-            Spacing = 8,
+            Text = "Montant libre", FontSize = 28, FontWeight = FontWeight.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        };
+        header.Children.Add(back);
+        // Titre centré sur toute la largeur, pas seulement à droite du bouton.
+        Grid.SetColumnSpan(title, 2);
+        header.Children.Insert(0, title);
+        DockPanel.SetDock(header, Dock.Top);
+
+        freePage.Children.Add(header);
+        freePage.Children.Add(new StackPanel
+        {
+            Spacing = 10,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Children =
-            {
-                new TextBlock { Text = "Montant libre", FontSize = 28, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center },
-                freeReference, freeAmount, vatButtons, keypad, freeError, pay, cancel,
-            },
-        };
+            Children = { freeReference, freeAmount, keypad, freeError, pay },
+        });
+    }
+
+    void ShowSaleScreen()
+    {
+        freePage.IsVisible = false;
+        saleScreen.IsVisible = true;
+        barcode.Focus();
     }
 
     void OpenFreeAmount()
@@ -204,16 +212,8 @@ public class PosWindow : Window
         freeReference.Text = "";
         freeAmount.Text = "";
         freeError.Text = "";
-        freeVat = VatRates[0];
-        RenderVat();
-        freeScreen.IsVisible = true;
-    }
-
-    void RenderVat()
-    {
-        foreach (var b in vatButtons.Children.OfType<Button>())
-            b.Background = b.Content as string == $"TVA {freeVat.ToString(CultureInfo.CurrentCulture)} %"
-                ? Brush.Parse("#2563eb") : null;
+        saleScreen.IsVisible = false;
+        freePage.IsVisible = true;
     }
 
     void PayFreeAmount(PaymentMethod method)
@@ -223,10 +223,13 @@ public class PosWindow : Window
             freeError.Text = "Saisissez un montant.";
             return;
         }
+        // Ticket à part : le ticket en cours à la caisse n'est ni payé ni modifié.
         var reference = freeReference.Text?.Trim();
-        ticket.AddFree(string.IsNullOrEmpty(reference) ? "Montant libre" : $"Bon de commande {reference}", amount, freeVat);
-        if (Pay(method)) freeScreen.IsVisible = false;
-        RefreshTicket();
+        var freeTicket = new Ticket();
+        freeTicket.AddFree(string.IsNullOrEmpty(reference) ? "Montant libre" : $"Bon de commande {reference}",
+            amount, options.FreeAmountVatRate);
+        if (Pay(freeTicket, method)) ShowSaleScreen();
+        else freeError.Text = status.Text;
     }
 
     // ---------- Vente ----------
@@ -290,9 +293,9 @@ public class PosWindow : Window
                 else ticket.RemoveLine(ticketList.SelectedIndex);
                 break;
             case KeyAction.ClearTicket: ticket.Clear(); break;
-            case KeyAction.PayCash: Pay(PaymentMethod.Cash); break;
-            case KeyAction.PayCard: Pay(PaymentMethod.Card); break;
-            case KeyAction.PayCheque: Pay(PaymentMethod.Cheque); break;
+            case KeyAction.PayCash: Pay(ticket, PaymentMethod.Cash); break;
+            case KeyAction.PayCard: Pay(ticket, PaymentMethod.Card); break;
+            case KeyAction.PayCheque: Pay(ticket, PaymentMethod.Cheque); break;
             case KeyAction.FreeAmount: OpenFreeAmount(); break;
             case KeyAction.GoToPage:
                 page = key.TargetPage ?? 0;
@@ -318,7 +321,7 @@ public class PosWindow : Window
         RefreshTicket();
     }
 
-    bool Pay(PaymentMethod method)
+    bool Pay(Ticket ticket, PaymentMethod method)
     {
         if (ticket.Lines.Count == 0) return false;
         try
