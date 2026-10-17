@@ -65,11 +65,16 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 
 ## Sécurité
 
-- **Rôles** : ils ne concernent que l'admin web, la caisse n'a pas de connexion.
-  - `Manager` (Responsable) : tout, sauf les onglets Utilisateurs, TPE et Configuration.
-  - `Admin` : tout.
-- Les politiques sont définies dans `Policies` (AdminApi.cs). Le groupe `/api` exige `Manager`, et le sous-groupe `admin` exige `Admin`.
-- À chaque requête, la session est revalidée en base (compte actif, même rôle, même login). Un compte désactivé est donc déconnecté immédiatement.
+- **Rôles et droits** : ils ne concernent que l'admin web, la caisse n'a pas de connexion.
+  - `Admin` : toutes les pages. Les pages Utilisateurs, TPE et Configuration lui sont réservées : la gestion des comptes et la restauration permettraient de s'attribuer n'importe quel droit.
+  - `Standard` : un niveau par page métier (`Page` : Touches, Ventes, Produits, Stock, Fournisseurs, Devis, Commandes), qui vaut `None`, `Read` ou `Write` (`Write` inclut `Read`). Ces droits sont stockés en JSON dans `User.Permissions`.
+- Politiques (`Policies`, AdminApi.cs) :
+  - « Admin » pour les pages d'administration.
+  - « Page:Niveau » (ex. `Products:Write`) pour chaque endpoint métier. Une lecture demande `Read`, une écriture `Write`.
+  - Convertir un devis exige `Quotes:Write` et `Orders:Write`.
+  - `/api/lookups` (noms des produits et des fournisseurs) est ouvert à tout utilisateur connecté.
+- Côté web, `can(page)` masque les boutons d'écriture et `Voir` ouvre le formulaire en lecture seule. C'est du confort : la vraie barrière, c'est l'API.
+- À chaque requête, la session est revalidée en base (compte actif, même login), puis ses claims sont reconstruites. Un changement de rôle ou de droits s'applique donc immédiatement, et un compte désactivé est déconnecté.
 - Les mots de passe sont hachés en PBKDF2 (`Secret`). Ils ne sont jamais renvoyés par l'API.
 - Le dernier administrateur actif ne peut être ni supprimé, ni désactivé, ni rétrogradé.
 - Une restauration copie d'abord la base actuelle dans `<données>/backups/`. Elle refuse les fichiers corrompus, ceux qui ne viennent pas de LocalMerch et ceux créés par une version plus récente.

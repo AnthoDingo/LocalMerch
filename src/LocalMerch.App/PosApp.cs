@@ -257,7 +257,10 @@ public class PosWindow : Window
         keysGrid.RowDefinitions = new RowDefinitions(string.Join(",", Enumerable.Repeat("*", options.Rows)));
         keysGrid.ColumnDefinitions = new ColumnDefinitions(string.Join(",", Enumerable.Repeat("*", options.Columns)));
 
-        foreach (var key in keys.Where(k => k.Page == page && k.Row < options.Rows && k.Column < options.Columns))
+        var visible = keys.Where(k => (k.Page == page || k.AllPages) && k.Row < options.Rows && k.Column < options.Columns)
+            .OrderBy(k => k.Page != page) // à la même case, la touche propre à la page passe devant la touche globale
+            .DistinctBy(k => (k.Row, k.Column));
+        foreach (var key in visible)
         {
             var button = new Button
             {

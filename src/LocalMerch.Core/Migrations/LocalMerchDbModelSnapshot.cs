@@ -57,6 +57,9 @@ namespace LocalMerch.Core.Migrations
                     b.Property<int>("Action")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AllPages")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -542,6 +545,34 @@ namespace LocalMerch.Core.Migrations
                         .WithMany()
                         .HasForeignKey("SaleId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("LocalMerch.Core.User", b =>
+                {
+                    b.OwnsMany("LocalMerch.Core.PagePermission", "Permissions", b1 =>
+                        {
+                            b1.Property<int>("UserId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAddOrUpdate();
+
+                            b1.Property<int>("Access");
+
+                            b1.Property<int>("Page");
+
+                            b1.HasKey("UserId", "__synthesizedOrdinal");
+
+                            b1.ToTable("Users");
+
+                            b1
+                                .ToJson("Permissions")
+                                .HasColumnType("TEXT");
+
+                            b1.WithOwner()
+                                .HasForeignKey("UserId");
+                        });
+
+                    b.Navigation("Permissions");
                 });
 #pragma warning restore 612, 618
         }

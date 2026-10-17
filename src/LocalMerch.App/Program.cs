@@ -37,24 +37,23 @@ public static class Program
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
             o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
-            // Un compte désactivé, supprimé ou changé de rôle perd sa session immédiatement.
+            // Droits relus en base à chaque requête : un compte désactivé ou supprimé perd sa session,
+            // un changement de rôle ou de droits s'applique immédiatement.
             o.Events.OnValidatePrincipal = async c =>
             {
                 var db = c.HttpContext.RequestServices.GetRequiredService<LocalMerchDb>();
                 var user = int.TryParse(c.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
                     ? await db.Users.FindAsync(id) : null;
                 // Le login est comparé aussi : après une restauration, un même Id peut désigner une autre personne.
-                if (user is not { Active: true } || user.Role.ToString() != c.Principal!.FindFirstValue(ClaimTypes.Role)
-                    || user.Login != c.Principal!.FindFirstValue(AdminApi.LoginClaim))
+                if (user is not { Active: true } || user.Login != c.Principal!.FindFirstValue(Policies.LoginClaim))
                 {
                     c.RejectPrincipal();
                     await c.HttpContext.SignOutAsync();
                 }
+                else c.ReplacePrincipal(Policies.Principal(user));
             };
         });
-        builder.Services.AddAuthorizationBuilder()
-            .AddPolicy(Policies.Manager, p => p.RequireRole(nameof(Role.Manager), nameof(Role.Admin)))
-            .AddPolicy(Policies.Admin, p => p.RequireRole(nameof(Role.Admin)));
+        Policies.Register(builder.Services.AddAuthorizationBuilder());
         builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         var app = builder.Build();

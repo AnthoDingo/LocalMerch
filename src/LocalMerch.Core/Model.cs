@@ -33,6 +33,8 @@ public class PosKey : IEntity, IValidatableObject
 {
     public int Id { get; set; }
     [Range(0, 99)] public int Page { get; set; }
+    /// <summary>Affichée sur toutes les pages ; une touche propre à la page, à la même place, la masque.</summary>
+    public bool AllPages { get; set; }
     [Range(0, 49)] public int Row { get; set; }
     [Range(0, 49)] public int Column { get; set; }
     [Required, MaxLength(40)] public string Label { get; set; } = "";
@@ -150,8 +152,20 @@ public class Sale
         Lines.GroupBy(l => l.VatRate).ToDictionary(g => g.Key, g => Money.VatOf(g.Sum(l => l.Amount), g.Key));
 }
 
-/// <summary>Rôles de l'administration web. Admin a tous les droits de Manager.</summary>
-public enum Role { Manager, Admin }
+/// <summary>Rôles de l'administration web. Admin a tous les droits ; Standard n'a que ses droits par page.</summary>
+public enum Role { Standard, Admin }
+
+/// <summary>Pages métier soumises à des droits. En minuscules : identifiant de l'écran dans l'admin web.</summary>
+public enum Page { Keys, Sales, Products, Stock, Suppliers, Quotes, Orders }
+
+/// <summary>Niveaux croissants : Write inclut Read.</summary>
+public enum Access { None, Read, Write }
+
+public class PagePermission
+{
+    public Page Page { get; set; }
+    public Access Access { get; set; }
+}
 
 /// <summary>Compte de l'administration web.</summary>
 public class User
@@ -164,6 +178,12 @@ public class User
     public bool Active { get; set; } = true;
     [JsonIgnore] public string? PasswordHash { get; set; }
     public bool HasPassword => PasswordHash is not null;
+    /// <summary>Droits par page d'un utilisateur Standard (ignorés pour un administrateur).</summary>
+    public List<PagePermission> Permissions { get; set; } = [];
+
+    public Access AccessTo(Page page) => Role == Role.Admin
+        ? Access.Write
+        : Permissions.Where(p => p.Page == page).Select(p => p.Access).DefaultIfEmpty(Access.None).Max();
 }
 
 /// <summary>Hachage PBKDF2 des mots de passe. Format : itérations.sel.hash (base64).</summary>

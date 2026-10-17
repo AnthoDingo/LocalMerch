@@ -136,6 +136,29 @@ public sealed class ShopTests : IDisposable
     }
 
     [Fact]
+    public void Page_access_follows_role_and_permissions()
+    {
+        var admin = new User { Role = Role.Admin };
+        Assert.Equal(Access.Write, admin.AccessTo(Page.Sales));
+
+        var user = new User
+        {
+            Permissions = [new() { Page = Page.Products, Access = Access.Write }, new() { Page = Page.Stock, Access = Access.Read }],
+        };
+        Assert.Equal(Access.Write, user.AccessTo(Page.Products));
+        Assert.Equal(Access.Read, user.AccessTo(Page.Stock));
+        Assert.Equal(Access.None, user.AccessTo(Page.Sales));
+
+        // Les droits survivent à l'enregistrement (colonne JSON).
+        user.Login = "paul";
+        user.DisplayName = "Paul";
+        db.Users.Add(user);
+        db.SaveChanges();
+        db.ChangeTracker.Clear();
+        Assert.Equal(Access.Read, db.Users.Single(u => u.Login == "paul").AccessTo(Page.Stock));
+    }
+
+    [Fact]
     public void Secrets_are_salted_and_verified()
     {
         var a = Secret.Hash("motdepasse");

@@ -8,11 +8,32 @@
   :root { --bg: #f6f7f9; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #2563eb; --card: #fff; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-  header { display: flex; align-items: center; gap: 4px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  header strong { margin-right: 16px; }
-  nav button { border: 0; background: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
-  nav button.active { background: var(--accent); color: #fff; }
-  main { padding: 16px; max-width: 1200px; margin: auto; }
+  .layout { display: flex; min-height: 100vh; }
+  aside { width: 220px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--card); border-right: 1px solid var(--line); transition: width .15s; overflow: hidden; }
+  aside.collapsed { width: 56px; }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 12px; min-height: 56px; }
+  .brand img { max-height: 32px; max-width: 100%; }
+  .brand strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  aside nav { flex: 1; overflow-y: auto; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .side-btn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 9px 10px;
+    border-radius: 6px; cursor: pointer; font: inherit; color: inherit; text-align: left; white-space: nowrap; }
+  .side-btn:hover { background: var(--bg); }
+  .side-btn.active { background: var(--accent); color: #fff; }
+  .side-btn svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .side-foot { border-top: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  #me { padding: 4px 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .perms td { padding: 3px 8px 3px 0; border: 0; vertical-align: middle; }
+  .perms select { width: auto; }
+  .side-section { margin: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); white-space: nowrap; }
+  .side-section:first-child { margin-top: 4px; }
+  aside.collapsed .side-section { font-size: 0; margin: 8px 6px; border-top: 1px solid var(--line); }
+  aside.collapsed .side-section:first-child { border-top: 0; margin: 0; }
+  aside.collapsed .label, aside.collapsed .brand strong, aside.collapsed #me { display: none; }
+  aside.collapsed .side-btn { justify-content: center; padding: 9px 0; }
+  aside.collapsed .brand { justify-content: center; padding: 12px 4px; }
+  main { flex: 1; min-width: 0; padding: 16px; max-width: 1200px; }
   table { width: 100%; border-collapse: collapse; background: var(--card); }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
@@ -50,9 +71,18 @@
   <p id="login-error" class="muted"></p>
 </form>
 <div id="app" class="hidden">
-  <header><img id="header-logo" class="hidden" alt="" style="height:32px"><strong id="header-title">LocalMerch</strong><nav id="nav"></nav>
-    <span id="me" class="muted" style="margin-left:auto"></span><button id="logout">Déconnexion</button></header>
-  <main id="view"></main>
+  <div class="layout">
+    <aside id="sidebar">
+      <div class="brand"><img id="header-logo" class="hidden" alt=""><strong id="header-title">LocalMerch</strong></div>
+      <nav id="nav" aria-label="Menu principal"></nav>
+      <div class="side-foot">
+        <span id="me" class="muted"></span>
+        <button id="logout" class="side-btn" title="Déconnexion"></button>
+        <button id="collapse" class="side-btn" aria-controls="sidebar"></button>
+      </div>
+    </aside>
+    <main id="view"></main>
+  </div>
 </div>
 <dialog id="dialog"></dialog>
 <script>
@@ -92,7 +122,7 @@ const L = {
   PayCash: 'Payer en espèces', PayCard: 'Payer par carte', GoToPage: 'Aller à la page',
   CaisseAp: 'Caisse-AP (IP)', Concert: 'Concert (IP)',
   Cheque: 'Chèque', PayCheque: 'Payer par chèque', FreeAmount: 'Montant libre', VoidSelected: 'Annuler la ligne sélectionnée',
-  Manager: 'Responsable', Admin: 'Administrateur',
+  Standard: 'Utilisateur', Admin: 'Administrateur', None: 'Aucun accès', Read: 'Lecture', Write: 'Modification',
 };
 const money = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const date = v => v ? new Date(v).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
@@ -101,8 +131,16 @@ const nameOf = (list, id) => cache[list].find(x => x.id === id)?.name ?? '';
 const choices = list => () => cache[list].map(x => [x.id, x.name]);
 const enumChoices = (...values) => () => values.map(v => [v, L[v]]);
 async function loadLookups() {
-  [cache.products, cache.suppliers] = await Promise.all([api('products'), api('suppliers')]);
+  ({ products: cache.products, suppliers: cache.suppliers } = await api('lookups'));
 }
+
+// --- Droits ---
+// Pages métier soumises à droits (identifiant de l'écran ; côté serveur : enum Page, ex. « Products »).
+const businessPages = ['keys', 'sales', 'products', 'stock', 'suppliers', 'quotes', 'orders'];
+const pageName = k => k[0].toUpperCase() + k.slice(1);
+let me = { role: '', access: {} };
+// Un administrateur peut tout ; sinon le niveau de la page doit suffire (Write inclut Read).
+const can = (k, level = 'Write') => me.role === 'Admin' || me.access[k] === 'Write' || (level === 'Read' && me.access[k] === 'Read');
 
 // --- Schémas des écrans « liste + formulaire » ---
 const schemas = {
@@ -147,7 +185,7 @@ const schemas = {
     columns: [['N°', q => q.id], ['Fournisseur', q => nameOf('suppliers', q.supplierId)], ['Référence', q => q.reference],
       ['Date', q => date(q.createdAt)], ['Validité', q => q.validUntil], ['Statut', q => L[q.status]], ['Total', q => money(q.total), 'num']],
     editable: q => q.status !== 'Accepted',
-    actions: q => q.status === 'Pending' && h('button', { onclick: () => act(`quotes/${q.id}/convert`, 'Convertir ce devis en commande ?') }, 'Convertir en commande'),
+    actions: q => q.status === 'Pending' && can('orders') && h('button', { onclick: () => act(`quotes/${q.id}/convert`, 'Convertir ce devis en commande ?') }, 'Convertir en commande'),
   },
   orders: {
     title: 'Commandes fournisseurs', path: 'orders', lines: true, newItem: () => ({ status: 'Draft', lines: [] }),
@@ -161,18 +199,21 @@ const schemas = {
     editable: o => o.status !== 'Received',
     actions: o => ['Draft', 'Sent'].includes(o.status) && h('button', { onclick: () => act(`orders/${o.id}/receive`, 'Réceptionner la commande et entrer les quantités en stock ?') }, 'Réceptionner'),
   },
-  // Responsable : tout sauf Utilisateurs, TPE et Configuration. Administrateur : tout.
+  // Administrateur : tout. Utilisateur : seulement les pages métier que lui donnent ses droits.
   users: {
-    title: 'Utilisateurs', path: 'users', newItem: () => ({ role: 'Manager', active: true }),
+    title: 'Utilisateurs', path: 'users', newItem: () => ({ role: 'Standard', active: true, permissions: [] }),
     fields: [
       { name: 'login', label: 'Identifiant', required: true, pattern: '[a-z0-9._\\-]+', autocomplete: 'off' },
       { name: 'displayName', label: 'Nom affiché', required: true },
-      { name: 'role', label: 'Rôle', type: 'select', options: enumChoices('Manager', 'Admin'), required: true },
+      { name: 'role', label: 'Rôle', type: 'select', options: enumChoices('Standard', 'Admin'), required: true },
       { name: 'active', label: 'Actif', type: 'checkbox' },
       { name: 'password', label: 'Mot de passe (vide = inchangé, 8 caractères min.)', type: 'password', autocomplete: 'new-password' },
+      { name: 'permissions', label: 'Droits par page (sans effet pour un administrateur)', type: 'permissions' },
     ],
     columns: [['Nom', u => u.displayName], ['Identifiant', u => u.login], ['Rôle', u => L[u.role]],
-      ['Actif', u => u.active ? 'Oui' : 'Non'], ['Mot de passe', u => u.hasPassword ? 'Oui' : 'Non']],
+      ['Actif', u => u.active ? 'Oui' : 'Non'], ['Mot de passe', u => u.hasPassword ? 'Oui' : 'Non'],
+      ['Droits', u => u.role === 'Admin' ? 'Toutes les pages' : u.permissions.map(p =>
+        `${allViews[p.page.toLowerCase()][0]} (${p.access === 'Write' ? 'modif.' : 'lecture'})`).join(', ') || 'Aucun']],
   },
   keys: {
     title: 'Touche', path: 'keys',
@@ -183,6 +224,7 @@ const schemas = {
       { name: 'productId', label: 'Produit', type: 'select', options: choices('products') },
       { name: 'targetPage', label: 'Page cible', type: 'number', min: 0, max: 99 },
       { name: 'page', label: 'Page', type: 'number', min: 0, max: 99, required: true },
+      { name: 'allPages', label: 'Dispo sur toutes les pages', type: 'checkbox' },
       { name: 'row', label: 'Ligne', type: 'number', min: 0, required: true },
       { name: 'column', label: 'Colonne', type: 'number', min: 0, required: true },
     ],
@@ -197,6 +239,13 @@ async function act(path, question) {
 
 // --- Formulaire générique ---
 function field(f, value) {
+  if (f.type === 'permissions') {
+    const current = Object.fromEntries((value || []).map(p => [p.page, p.access]));
+    return h('table', { className: 'perms' }, h('tbody', {}, businessPages.map(k => h('tr', {},
+      h('td', {}, allViews[k][0]),
+      h('td', {}, h('select', { name: pageName(k), ariaLabel: 'Droits sur ' + allViews[k][0] },
+        ['None', 'Read', 'Write'].map(a => h('option', { value: a, selected: (current[pageName(k)] || 'None') === a }, L[a]))))))));
+  }
   const common = { name: f.name, required: f.required };
   if (f.type === 'select') {
     return h('select', common, h('option', { value: '' }, '—'),
@@ -208,6 +257,7 @@ function field(f, value) {
 }
 
 function readField(f, el) {
+  if (f.type === 'permissions') return [...el.querySelectorAll('select')].map(s => ({ page: s.name, access: s.value }));
   if (f.type === 'checkbox') return el.checked;
   if (el.value === '') return null;
   if (f.type === 'number' || (f.type === 'select' && /^\d+$/.test(el.value))) return Number(el.value);
@@ -237,20 +287,25 @@ function linesEditor(lines) {
   return box;
 }
 
-function openForm(schema, item, onDone) {
+/** readOnly : consultation seule (droit de lecture sans droit de modification). */
+function openForm(schema, item, onDone, readOnly = false) {
   const dlg = $('#dialog');
   const inputs = schema.fields.map(f => [f, field(f, item[f.name])]);
   const lines = schema.lines && linesEditor(item.lines || []);
   const form = h('form', { className: 'grid', method: 'dialog' },
     inputs.map(([f, el]) => [h('label', {}, f.label), el]),
     lines,
-    h('div', { className: 'actions' },
-      item.id && h('button', { type: 'button', className: 'danger', style: 'margin-right:auto', onclick: async () => {
-        if (!confirm('Supprimer définitivement ?')) return;
-        await api(`${schema.path}/${item.id}`, 'DELETE'); dlg.close(); onDone();
-      } }, 'Supprimer'),
-      h('button', { type: 'button', onclick: () => dlg.close() }, 'Annuler'),
-      h('button', { className: 'primary' }, 'Enregistrer')));
+    h('div', { className: 'actions' }, readOnly
+      ? h('button', { type: 'button', onclick: () => dlg.close() }, 'Fermer')
+      : [
+        item.id && h('button', { type: 'button', className: 'danger', style: 'margin-right:auto', onclick: async () => {
+          if (!confirm('Supprimer définitivement ?')) return;
+          await api(`${schema.path}/${item.id}`, 'DELETE'); dlg.close(); onDone();
+        } }, 'Supprimer'),
+        h('button', { type: 'button', onclick: () => dlg.close() }, 'Annuler'),
+        h('button', { className: 'primary' }, 'Enregistrer'),
+      ]));
+  if (readOnly) form.querySelectorAll('input, select, textarea, .lines button').forEach(el => { el.disabled = true; });
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const data = { ...item };
@@ -261,7 +316,7 @@ function openForm(schema, item, onDone) {
     dlg.close();
     onDone();
   });
-  dlg.replaceChildren(h('h3', {}, (item.id ? 'Modifier — ' : 'Nouveau — ') + schema.title), form);
+  dlg.replaceChildren(h('h3', {}, (readOnly ? 'Consulter — ' : item.id ? 'Modifier — ' : 'Nouveau — ') + schema.title), form);
   dlg.showModal();
 }
 
@@ -277,13 +332,13 @@ function table(columns, rows, extra) {
 async function listView(key) {
   const s = schemas[key];
   const items = await api(s.path);
+  const editable = can(key);
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, s.title),
-      h('button', { className: 'primary', onclick: () => openForm(s, s.newItem(), render) }, 'Nouveau')),
-    table(s.columns, items, item => [
-      s.actions?.(item),
-      (s.editable?.(item) ?? true) && h('button', { onclick: () => openForm(s, item, render) }, 'Modifier'),
-    ]),
+      editable && h('button', { className: 'primary', onclick: () => openForm(s, s.newItem(), render) }, 'Nouveau')),
+    table(s.columns, items, item => editable && (s.editable?.(item) ?? true)
+      ? [s.actions?.(item), h('button', { onclick: () => openForm(s, item, render) }, 'Modifier')]
+      : [editable && s.actions?.(item), h('button', { onclick: () => openForm(s, item, render, true) }, 'Voir')]),
   ];
 }
 
@@ -291,20 +346,25 @@ async function listView(key) {
 let keyPage = 0;
 async function keysView() {
   const [layout, keys] = await Promise.all([api('pos/layout'), api('keys')]);
+  const editable = can('keys');
   const grid = h('div', { className: 'keys', style: `grid-template-columns: repeat(${layout.columns}, 1fr)` });
   for (let row = 0; row < layout.rows; row++)
     for (let column = 0; column < layout.columns; column++) {
-      const k = keys.find(k => k.page === keyPage && k.row === row && k.column === column);
+      const at = k => k.row === row && k.column === column;
+      const k = keys.find(k => k.page === keyPage && at(k)) ?? keys.find(k => k.allPages && at(k));
       grid.append(k
-        ? h('button', { style: `background:${k.color}`, title: L[k.action], onclick: () => openForm(schemas.keys, k, render) }, k.label)
-        : h('button', { className: 'empty', onclick: () => openForm(schemas.keys,
-            { page: keyPage, row, column, color: '#3b82f6', action: 'Product' }, render) }, '+'));
+        ? h('button', { style: `background:${k.color}`, title: L[k.action] + (k.allPages ? ' (toutes les pages)' : ''),
+            onclick: () => openForm(schemas.keys, k, render, !editable) }, k.allPages ? '★ ' + k.label : k.label)
+        : h('button', { className: 'empty', disabled: !editable, onclick: () => openForm(schemas.keys,
+            { page: keyPage, row, column, color: '#3b82f6', action: 'Product' }, render) }, editable ? '+' : ''));
     }
   const pageInput = h('input', { type: 'number', min: 0, max: 99, value: keyPage, style: 'width:70px',
     onchange: e => { keyPage = Number(e.target.value) || 0; render(); } });
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Touches de la caisse'), h('label', {}, 'Page ', pageInput)),
-    h('p', { className: 'muted' }, 'Cliquez sur une case pour créer ou modifier une touche. La caisse se met à jour immédiatement.'),
+    h('p', { className: 'muted' }, editable
+      ? 'Cliquez sur une case pour créer ou modifier une touche. La caisse se met à jour immédiatement.'
+      : 'Consultation seule : cliquez sur une touche pour voir son réglage.'),
     grid,
   ];
 }
@@ -328,8 +388,7 @@ async function stockView() {
   });
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Stock')),
-    h('p', { className: 'muted' }, 'Entrée / sortie : quantité positive. Ajustement : quantité signée (ex. -2 pour casse).'),
-    form,
+    ...(can('stock') ? [h('p', { className: 'muted' }, 'Entrée / sortie : quantité positive. Ajustement : quantité signée (ex. -2 pour casse).'), form] : []),
     table([['Produit', l => l.name], ['En vente', l => l.active ? 'Oui' : 'Non'], ['Quantité', l => l.quantity, 'num']], levels),
     h('h3', {}, 'Derniers mouvements'),
     table([['Date', m => date(m.at)], ['Produit', m => nameOf('products', m.productId)], ['Type', m => L[m.type]],
@@ -347,7 +406,7 @@ async function salesView() {
       ['Détail', s => s.lines.map(l => `${l.quantity} × ${l.label}`).join(', ')],
       ['Remb.', s => s.refundOfSaleId ? `de ${s.refundOfSaleId}` : refunded.has(s.id) ? 'remboursée' : ''],
       ['Total', s => money(s.total), 'num']], sales,
-      s => !s.refundOfSaleId && !refunded.has(s.id) &&
+      s => can('sales') && !s.refundOfSaleId && !refunded.has(s.id) &&
         h('button', { className: 'danger', onclick: () => act(`sales/${s.id}/refund`, `Rembourser la vente n°${s.id} ?`) }, 'Rembourser')),
   ];
 }
@@ -465,6 +524,44 @@ function backupSection() {
 }
 
 // --- Navigation ---
+// Icônes 24×24 en traits (couleur = currentColor).
+const icons = {
+  keys: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  products: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  suppliers: '<rect x="2" y="6" width="12" height="10" rx="1"/><path d="M14 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  quotes: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/>',
+  orders: '<path d="M3 4h2l3 11h11l2-8H7"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/>',
+  stock: '<path d="M12 3 3 7.5 12 12l9-4.5z"/><path d="M3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/>',
+  sales: '<path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-4-6"/>',
+  terminal: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  config: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  collapse: '<path d="M15 6l-6 6 6 6"/>',
+  expand: '<path d="M9 6l6 6-6 6"/>',
+};
+const icon = name => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`; return t.content.firstChild; };
+const sideButton = (name, label, props = {}) => h('button', { className: 'side-btn', title: label, ...props }, icon(name), h('span', { className: 'label' }, label));
+
+// Menu replié ou non : préférence propre à ce navigateur. Replié par défaut sur petit écran.
+let collapsed;
+try { collapsed = localStorage.getItem('sidebar-collapsed'); } catch {}
+collapsed = collapsed == null ? innerWidth < 700 : collapsed === '1';
+function applyCollapse() {
+  $('#sidebar').classList.toggle('collapsed', collapsed);
+  const label = collapsed ? 'Déplier le menu' : 'Replier le menu';
+  $('#collapse').replaceChildren(icon(collapsed ? 'expand' : 'collapse'), h('span', { className: 'label' }, label));
+  $('#collapse').title = label;
+  $('#collapse').setAttribute('aria-expanded', String(!collapsed));
+}
+$('#collapse').addEventListener('click', () => {
+  collapsed = !collapsed;
+  try { localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+  applyCollapse();
+});
+$('#logout').append(icon('logout'), h('span', { className: 'label' }, 'Déconnexion'));
+applyCollapse();
+
 // [libellé, écran, réservé aux administrateurs]
 const allViews = {
   keys: ['Touches', keysView], products: ['Produits', () => listView('products')], suppliers: ['Fournisseurs', () => listView('suppliers')],
@@ -472,12 +569,26 @@ const allViews = {
   stock: ['Stock', stockView], sales: ['Ventes', salesView],
   users: ['Utilisateurs', () => listView('users'), true], terminal: ['TPE', terminalView, true], config: ['Configuration', configView, true],
 };
+// Menu par catégorie ; une catégorie sans écran autorisé n'est pas affichée.
+const sections = [
+  ['Caisse', ['keys', 'sales']],
+  ['Catalogue', ['products', 'stock']],
+  ['Achats', ['suppliers', 'quotes', 'orders']],
+  ['Administration', ['users', 'terminal', 'config']],
+];
 let views = {};
 let current = 'keys';
 
 async function render() {
-  $('#nav').replaceChildren(...Object.entries(views).map(([k, [label]]) =>
-    h('button', { className: k === current ? 'active' : '', onclick: () => { current = k; location.hash = k; render(); } }, label)));
+  $('#nav').replaceChildren(...sections.flatMap(([title, keys]) => {
+    const allowed = keys.filter(k => k in views);
+    if (!allowed.length) return [];
+    return [h('div', { className: 'side-section', role: 'heading', ariaLevel: '2' }, title), ...allowed.map(k => {
+      const b = sideButton(k, views[k][0], { onclick: () => { current = k; location.hash = k; render(); } });
+      if (k === current) { b.classList.add('active'); b.setAttribute('aria-current', 'page'); }
+      return b;
+    })];
+  }));
   await loadLookups();
   $('#view').replaceChildren(...(await views[current][1]()));
 }
@@ -504,13 +615,20 @@ $('#login').addEventListener('submit', async e => {
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); });
 
 async function start() {
-  const me = await api('me');
+  me = await api('me');
   $('#me').textContent = `${me.name} (${L[me.role]})`;
-  views = Object.fromEntries(Object.entries(allViews).filter(([, [, , adminOnly]]) => !adminOnly || me.role === 'Admin'));
+  views = Object.fromEntries(Object.entries(allViews).filter(([k, [, , adminOnly]]) =>
+    adminOnly ? me.role === 'Admin' : can(k, 'Read')));
   const wanted = location.hash.slice(1);
-  current = wanted in views ? wanted : 'keys';
+  current = wanted in views ? wanted : Object.keys(views)[0];
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
+  if (!current) {
+    $('#nav').replaceChildren();
+    $('#view').replaceChildren(h('h2', {}, 'Aucun accès'),
+      h('p', { className: 'muted' }, 'Votre compte n\'a accès à aucune page. Demandez à un administrateur de vous attribuer des droits.'));
+    return;
+  }
   render();
 }
 applyBranding().catch(() => {});

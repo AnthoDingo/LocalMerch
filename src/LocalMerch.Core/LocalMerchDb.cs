@@ -57,6 +57,7 @@ public class LocalMerchDb(DbContextOptions<LocalMerchDb> options) : DbContext(op
         b.Entity<StockMovement>().HasOne<PurchaseOrder>().WithMany().HasForeignKey(m => m.PurchaseOrderId).OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<User>().HasIndex(u => u.Login).IsUnique();
+        b.Entity<User>().OwnsMany(u => u.Permissions, p => p.ToJson());
 
         b.Entity<Sale>().HasOne<Sale>().WithMany().HasForeignKey(s => s.RefundOfSaleId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Sale>().OwnsMany(s => s.Lines, l =>

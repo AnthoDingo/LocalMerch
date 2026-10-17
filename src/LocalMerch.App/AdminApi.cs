@@ -4,15 +4,43 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.Features;
 using LocalMerch.Core;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 namespace LocalMerch.App;
 
+/// <summary>
+/// Autorisations : « Admin » pour les pages d'administration, « Page:Niveau » (ex. « Products:Write ») pour les
+/// pages métier. Les droits sont portés par des claims, reconstruites depuis la base à chaque requête.
+/// </summary>
 public static class Policies
 {
-    public const string Manager = nameof(Manager);
     public const string Admin = nameof(Admin);
+    public const string LoginClaim = "login";
+    const string AccessClaim = "access:";
+
+    public static string For(Page page, Access access) => $"{page}:{access}";
+
+    public static void Register(AuthorizationBuilder auth)
+    {
+        auth.AddPolicy(Admin, p => p.RequireRole(nameof(Role.Admin)));
+        foreach (var page in Enum.GetValues<Page>())
+            foreach (var access in (Access[])[Access.Read, Access.Write])
+                auth.AddPolicy(For(page, access), p => p.RequireAssertion(c => Allows(c.User, page, access)));
+    }
+
+    public static bool Allows(ClaimsPrincipal user, Page page, Access needed) =>
+        Enum.TryParse<Access>(user.FindFirstValue(AccessClaim + page), out var access) && access >= needed;
+
+    public static ClaimsPrincipal Principal(User user) => new(new ClaimsIdentity(
+    [
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim(LoginClaim, user.Login),
+        new Claim(ClaimTypes.Name, user.DisplayName),
+        new Claim(ClaimTypes.Role, user.Role.ToString()),
+        .. Enum.GetValues<Page>().Select(p => new Claim(AccessClaim + p, user.AccessTo(p).ToString())),
+    ], CookieAuthenticationDefaults.AuthenticationScheme));
 }
 
 /// <summary>API JSON de la page d'administration (wwwroot/index.html).</summary>
@@ -20,10 +48,9 @@ public static class AdminApi
 {
     record Login(string? Username, string? Password);
     record NewMovement(int ProductId, MovementType Type, int Quantity, string? Reason);
-    record UserInput(string? Login, string? DisplayName, Role Role, bool Active, string? Password);
+    record UserInput(string? Login, string? DisplayName, Role Role, bool Active, string? Password, List<PagePermission>? Permissions);
     record BrandingInput(string? Title);
 
-    public const string LoginClaim = "login";
     const int MaxLogoBytes = 512 * 1024;
     const long MaxBackupBytes = 500L * 1024 * 1024;
     static readonly string[] LogoTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -40,13 +67,7 @@ public static class AdminApi
                 return Results.Unauthorized();
             }
 
-            var identity = new ClaimsIdentity([
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(LoginClaim, user.Login),
-                new Claim(ClaimTypes.Name, user.DisplayName),
-                new Claim(ClaimTypes.Role, user.Role.ToString()),
-            ], CookieAuthenticationDefaults.AuthenticationScheme);
-            await http.SignInAsync(new ClaimsPrincipal(identity));
+            await http.SignInAsync(Policies.Principal(user));
             return Results.NoContent();
         });
         app.MapPost("/api/logout", async (HttpContext http) =>
@@ -66,28 +87,41 @@ public static class AdminApi
                 : Results.NotFound();
         });
 
-        var api = app.MapGroup("/api").RequireAuthorization(Policies.Manager).AddEndpointFilter(async (ctx, next) =>
+        var api = app.MapGroup("/api").RequireAuthorization().AddEndpointFilter(async (ctx, next) =>
         {
             try { return await next(ctx); }
             catch (ShopException e) { return Results.BadRequest(new { error = e.Message }); }
         });
-        // Réservé aux administrateurs (s'ajoute à l'exigence « responsable » du groupe).
         var admin = api.MapGroup("").RequireAuthorization(Policies.Admin);
+        static string Read(Page page) => Policies.For(page, Access.Read);
+        static string Write(Page page) => Policies.For(page, Access.Write);
 
-        api.MapGet("/me", (ClaimsPrincipal me) => new { name = me.Identity?.Name, role = me.FindFirstValue(ClaimTypes.Role) });
+        api.MapGet("/me", (ClaimsPrincipal me) => new
+        {
+            name = me.Identity?.Name,
+            role = me.FindFirstValue(ClaimTypes.Role),
+            access = Enum.GetValues<Page>().ToDictionary(p => p.ToString().ToLowerInvariant(),
+                p => Policies.Allows(me, p, Access.Write) ? Access.Write : Policies.Allows(me, p, Access.Read) ? Access.Read : Access.None),
+        });
+        // Noms seuls, pour les listes déroulantes et les tableaux de toutes les pages.
+        api.MapGet("/lookups", async (LocalMerchDb db) => new
+        {
+            products = await db.Products.AsNoTracking().OrderBy(p => p.Name).Select(p => new { p.Id, p.Name }).ToListAsync(),
+            suppliers = await db.Suppliers.AsNoTracking().OrderBy(s => s.Name).Select(s => new { s.Id, s.Name }).ToListAsync(),
+        });
         var pos = app.Configuration.GetSection("Pos").Get<PosOptions>() ?? new();
-        api.MapGet("/pos/layout", () => new { pos.Rows, pos.Columns });
+        api.MapGet("/pos/layout", () => new { pos.Rows, pos.Columns }).RequireAuthorization(Read(Page.Keys));
 
-        Crud(api, "products", db => db.Products);
-        Crud(api, "keys", db => db.PosKeys);
-        Crud(api, "suppliers", db => db.Suppliers);
-        Crud(api, "quotes", db => db.Quotes, (q, old) =>
+        Crud(api, "products", Page.Products, db => db.Products);
+        Crud(api, "keys", Page.Keys, db => db.PosKeys);
+        Crud(api, "suppliers", Page.Suppliers, db => db.Suppliers);
+        Crud(api, "quotes", Page.Quotes, db => db.Quotes, (q, old) =>
         {
             q.CreatedAt = old?.CreatedAt ?? DateTime.UtcNow;
             return q.Status == QuoteStatus.Accepted && old?.Status != QuoteStatus.Accepted
                 ? "Utilisez « Convertir en commande » pour accepter un devis." : null;
         });
-        Crud(api, "orders", db => db.PurchaseOrders, (o, old) =>
+        Crud(api, "orders", Page.Orders, db => db.PurchaseOrders, (o, old) =>
         {
             if (old?.Status == OrderStatus.Received) return "Commande déjà réceptionnée : elle n'est plus modifiable.";
             if (o.Status == OrderStatus.Received) return "Utilisez « Réceptionner » pour entrer la commande en stock.";
@@ -97,21 +131,26 @@ public static class AdminApi
             return null;
         });
 
-        api.MapPost("/quotes/{id:int}/convert", (int id, Shop shop) => shop.ConvertQuote(id));
-        api.MapPost("/orders/{id:int}/receive", (int id, Shop shop) => shop.ReceiveOrder(id));
+        // Convertir un devis crée une commande : il faut pouvoir modifier les deux.
+        api.MapPost("/quotes/{id:int}/convert", (int id, Shop shop) => shop.ConvertQuote(id))
+            .RequireAuthorization(Write(Page.Quotes), Write(Page.Orders));
+        api.MapPost("/orders/{id:int}/receive", (int id, Shop shop) => shop.ReceiveOrder(id))
+            .RequireAuthorization(Write(Page.Orders));
 
         api.MapGet("/stock", async (LocalMerchDb db, Shop shop) =>
         {
             var levels = shop.StockLevels();
             var products = await db.Products.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
             return products.Select(p => new { productId = p.Id, p.Name, p.Active, quantity = levels.GetValueOrDefault(p.Id) });
-        });
+        }).RequireAuthorization(Read(Page.Stock));
         api.MapGet("/stock/movements", (LocalMerchDb db, int? productId) =>
             db.StockMovements.AsNoTracking()
                 .Where(m => productId == null || m.ProductId == productId)
-                .OrderByDescending(m => m.Id).Take(200).ToListAsync());
+                .OrderByDescending(m => m.Id).Take(200).ToListAsync())
+            .RequireAuthorization(Read(Page.Stock));
         api.MapPost("/stock/movements", (NewMovement m, Shop shop) =>
-            shop.RecordMovement(m.ProductId, m.Type, m.Quantity, m.Reason));
+            shop.RecordMovement(m.ProductId, m.Type, m.Quantity, m.Reason))
+            .RequireAuthorization(Write(Page.Stock));
 
         admin.MapGet("/terminal", async (LocalMerchDb db) => await db.PaymentTerminals.FindAsync(1) ?? new PaymentTerminal());
         admin.MapPut("/terminal", async (PaymentTerminal t, LocalMerchDb db) =>
@@ -141,8 +180,10 @@ public static class AdminApi
         });
 
         api.MapGet("/sales", (LocalMerchDb db) =>
-            db.Sales.AsNoTracking().OrderByDescending(s => s.Id).Take(200).ToListAsync());
-        api.MapPost("/sales/{id:int}/refund", (int id, Shop shop) => shop.RefundSale(id));
+            db.Sales.AsNoTracking().OrderByDescending(s => s.Id).Take(200).ToListAsync())
+            .RequireAuthorization(Read(Page.Sales));
+        api.MapPost("/sales/{id:int}/refund", (int id, Shop shop) => shop.RefundSale(id))
+            .RequireAuthorization(Write(Page.Sales));
 
         admin.MapGet("/users", (LocalMerchDb db) => db.Users.AsNoTracking().OrderBy(u => u.DisplayName).ToListAsync());
         admin.MapPost("/users", (UserInput input, LocalMerchDb db) => SaveUser(new User(), input, db));
@@ -226,15 +267,19 @@ public static class AdminApi
 
     /// <param name="check">Appelé avant création (old = null) ou modification : corrige les champs gérés
     /// par le serveur et renvoie un message d'erreur pour refuser.</param>
-    static void Crud<T>(RouteGroupBuilder api, string name, Func<LocalMerchDb, DbSet<T>> set,
+    static void Crud<T>(RouteGroupBuilder api, string name, Page page, Func<LocalMerchDb, DbSet<T>> set,
         Func<T, T?, string?>? check = null) where T : class, IEntity
     {
         var g = api.MapGroup("/" + name);
+        var read = Policies.For(page, Access.Read);
+        var write = Policies.For(page, Access.Write);
 
-        g.MapGet("/", (LocalMerchDb db) => set(db).AsNoTracking().OrderBy(e => e.Id).ToListAsync());
+        g.MapGet("/", (LocalMerchDb db) => set(db).AsNoTracking().OrderBy(e => e.Id).ToListAsync())
+            .RequireAuthorization(read);
 
         g.MapGet("/{id:int}", async (int id, LocalMerchDb db) =>
-            await set(db).FindAsync(id) is { } e ? Results.Ok(e) : Results.NotFound());
+            await set(db).FindAsync(id) is { } e ? Results.Ok(e) : Results.NotFound())
+            .RequireAuthorization(read);
 
         g.MapPost("/", async (T e, LocalMerchDb db) =>
         {
@@ -243,7 +288,7 @@ public static class AdminApi
             if (e is IHasLines doc) doc.Lines.ForEach(l => l.Id = 0);
             set(db).Add(e);
             return await Save(db) ?? Results.Created($"/api/{name}/{e.Id}", e);
-        });
+        }).RequireAuthorization(write);
 
         g.MapPut("/{id:int}", async (int id, T e, LocalMerchDb db) =>
         {
@@ -262,14 +307,14 @@ public static class AdminApi
                 }));
             }
             return await Save(db) ?? Results.Ok(existing);
-        });
+        }).RequireAuthorization(write);
 
         g.MapDelete("/{id:int}", async (int id, LocalMerchDb db) =>
         {
             if (await set(db).FindAsync(id) is not { } e) return Results.NotFound();
             set(db).Remove(e);
             return await Save(db) ?? Results.NoContent();
-        });
+        }).RequireAuthorization(write);
     }
 
     static async Task<ShopSettings> Settings(LocalMerchDb db)
@@ -291,6 +336,11 @@ public static class AdminApi
         user.DisplayName = input.DisplayName?.Trim() ?? "";
         user.Role = input.Role;
         user.Active = input.Active;
+        user.Permissions = (input.Permissions ?? [])
+            .Where(p => p.Access != Access.None && Enum.IsDefined(p.Page) && Enum.IsDefined(p.Access))
+            .DistinctBy(p => p.Page)
+            .Select(p => new PagePermission { Page = p.Page, Access = p.Access })
+            .ToList();
         if (input.Password is { Length: > 0 } password)
         {
             if (password.Length < 8) return Refused("Le mot de passe doit faire au moins 8 caractères.")!;
