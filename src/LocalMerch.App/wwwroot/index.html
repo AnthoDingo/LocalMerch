@@ -700,6 +700,52 @@ function backupSection() {
     status);
 }
 
+async function updatesView(state) {
+  const s = state ?? await api('updates');
+  const status = h('p', { className: 'muted' });
+  const check = async () => {
+    status.textContent = 'Recherche en cours…';
+    const next = await api('updates/check', 'POST');
+    $('#view').replaceChildren(...(await updatesView(next)).filter(Boolean));
+  };
+  const install = async () => {
+    if (!confirm(`Installer la version ${s.available.version} ?\n\nLa base de données sera sauvegardée d'abord. ` +
+      'L\'application redémarrera : la caisse sera indisponible quelques secondes.')) return;
+    status.textContent = 'Sauvegarde, téléchargement et installation en cours…';
+    try { alert((await api('updates/install', 'POST')).message); } catch (e) { status.textContent = e.message; return; }
+    status.textContent = 'Redémarrage en cours, rechargez la page dans quelques secondes.';
+  };
+  const auto = h('input', { type: 'checkbox', id: 'auto-update', checked: s.autoUpdate, onchange: async e => {
+    await api('updates/auto', 'PUT', { enabled: e.target.checked });
+    toast(e.target.checked ? 'Mises à jour automatiques activées.' : 'Mises à jour automatiques désactivées.');
+  } });
+  const a = s.available;
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Mises à jour')),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Version'),
+      h('dl', { className: 'profile' },
+        h('dt', {}, 'Version installée'), h('dd', {}, s.current),
+        h('dt', {}, 'Dernière recherche'), h('dd', {}, s.lastCheck ? date(s.lastCheck) : 'Jamais'),
+        h('dt', {}, 'État'), h('dd', {}, s.installed ? badge(`Version ${s.installed} installée, redémarrage attendu`, 'info')
+          : s.error ? badge(s.error, 'danger') : a ? badge(`Version ${a.version} disponible`, 'warn')
+          : s.lastCheck ? badge('À jour', 'success') : '')),
+      a && a.notes && h('pre', { style: 'white-space:pre-wrap; font:inherit; margin:16px 0 0' }, a.notes),
+      a && a.pageUrl && h('p', {}, h('a', { href: a.pageUrl, target: '_blank', rel: 'noopener' }, 'Voir la version sur GitHub')),
+      a && !a.packageUrl && h('p', { className: 'muted' }, `Pas de paquet pour cette machine (${s.platform}).`),
+      !s.canInstall && h('p', { className: 'muted' }, 'L\'installation n\'est possible que sous Linux.'),
+      h('div', { className: 'toolbar', style: 'margin:16px 0 0' },
+        h('button', { onclick: check }, 'Rechercher maintenant'),
+        a && h('button', { className: 'primary', disabled: !a.packageUrl || !s.canInstall || !!s.installed, onclick: install },
+          `Installer la version ${a.version}`)),
+      status),
+    h('section', { className: 'card pad' }, h('h3', {}, 'Automatique'),
+      h('p', { className: 'muted' }, 'Recherche toutes les heures. Si l\'option est cochée, la mise à jour s\'installe seule ' +
+        'au démarrage de l\'application ou entre 3 h et 5 h, pour ne pas couper une vente. ' +
+        'Avant chaque mise à jour, la base est sauvegardée dans le dossier « backups » du serveur.'),
+      h('div', { className: 'toolbar', style: 'margin:12px 0 0' }, auto, h('label', { htmlFor: 'auto-update' }, 'Installer les mises à jour automatiquement'))),
+  ];
+}
+
 // --- Navigation ---
 // Icônes 24×24 en traits (couleur = currentColor).
 const icons = {
@@ -719,6 +765,7 @@ const icons = {
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   expand: '<path d="M9 6l6 6-6 6"/>',
+  updates: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5M12 8v5l3 2"/>',
 };
 const icon = name => { const t = document.createElement('template'); t.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`; return t.content.firstChild; };
 const sideButton = (name, label, props = {}) => h('button', { className: 'side-btn', title: label, ...props }, icon(name), h('span', { className: 'label' }, label));
@@ -799,6 +846,7 @@ const allViews = {
   quotes: ['Devis', () => listView('quotes')], orders: ['Commandes', () => listView('orders')],
   stock: ['Stock', stockView], sales: ['Ventes', salesView],
   users: ['Utilisateurs', () => listView('users'), true], terminal: ['TPE', terminalView, true], config: ['Configuration', configView, true],
+  updates: ['Mises à jour', () => updatesView(), true],
 };
 // Hors menu (bouton en bas de la barre latérale), ouvert à tout utilisateur connecté.
 const accountPage = ['Mon compte', accountView];
@@ -807,7 +855,7 @@ const sections = [
   ['Caisse', ['keys', 'sales']],
   ['Catalogue', ['products', 'stock']],
   ['Achats', ['suppliers', 'quotes', 'orders']],
-  ['Administration', ['users', 'terminal', 'config']],
+  ['Administration', ['users', 'terminal', 'config', 'updates']],
 ];
 let views = {};
 let current = 'keys';

@@ -219,6 +219,8 @@ public class ShopSettings
     /// <summary>Code demandé pour quitter la caisse. Jamais renvoyé par /api/branding (public).</summary>
     [JsonIgnore, MaxLength(20), RegularExpression("^[0-9]*$", ErrorMessage = "Mot de passe de sortie : chiffres uniquement.")]
     public string? ExitPassword { get; set; }
+    /// <summary>Installe seul les mises à jour (au démarrage ou la nuit).</summary>
+    [JsonIgnore] public bool AutoUpdate { get; set; }
 }
 
 public enum TerminalProtocol { CaisseAp, Concert }

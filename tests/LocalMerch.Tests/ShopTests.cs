@@ -264,4 +264,15 @@ public sealed class ShopTests : IDisposable
     {
         Assert.Equal(expected, LocalNetwork.Contains(IPAddress.Parse(ip)));
     }
+
+    [Theory]
+    [InlineData("v1.2.0", "1.1.9", true)]
+    [InlineData("v1.10.0", "1.9.0", true)]
+    [InlineData("v1.2.0", "1.2.0+abc123", false)]
+    [InlineData("v1.2.0", "1.3.0", false)]
+    [InlineData("nightly", "1.0.0", false)]
+    public void Update_version_comparison(string candidate, string current, bool expected)
+    {
+        Assert.Equal(expected, Updater.IsNewer(candidate, current));
+    }
 }

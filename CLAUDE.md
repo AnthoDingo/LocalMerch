@@ -33,6 +33,7 @@ src/
     LocalMerchDb.cs     # DbContext EF Core (SQLite), événement CatalogChanged
     Shop.cs             # opérations métier (stock, ventes, devis, commandes), Ticket, LocalNetwork
     Backup.cs           # sauvegarde / restauration de la base (API de sauvegarde SQLite)
+    Updater.cs          # mises à jour depuis les releases GitHub
     Migrations/
   LocalMerch.App/       # point d'entrée : Kestrel (admin web) + Avalonia (caisse)
     Program.cs          # démarrage, auth, filtre réseau local
@@ -43,6 +44,8 @@ tests/
   LocalMerch.Tests/     # xUnit, SQLite en mémoire
 deploy/
   localmerch.service    # service systemd utilisateur
+.github/workflows/
+  release.yml           # tag vX.Y.Z → tests, publication linux-x64/arm64, release GitHub
 ```
 
 - Le serveur web tourne en arrière-plan, et la caisse Avalonia sur le thread principal.
@@ -61,6 +64,7 @@ Ne pas créer de projet supplémentaire sans besoin réel.
 - **Réception de commande** : génère les mouvements d'entrée de stock correspondants.
 - **Montant libre** : une page dédiée, ouverte uniquement par une touche `FreeAmount`. Elle sert aux commandes passées sur un catalogue extérieur : on saisit le montant TTC et le n° de bon, puis on paie (CB, espèces, chèque). Le paiement porte sur un ticket séparé, sans toucher au ticket en cours. La TVA n'est pas demandée : on applique `Pos:FreeAmountVatRate` (20 % par défaut). La ligne n'a pas de produit (`ProductId` null), donc elle ne crée aucun mouvement de stock.
 - **TPE réseau** : sa configuration (`PaymentTerminal`, une seule ligne, Id = 1) se fait dans l'onglet TPE de l'admin. Le protocole de paiement (Caisse-AP / Concert) n'est **pas encore implémenté** : le bouton « Payer par carte » enregistre la vente sans interroger le TPE.
+- **Mises à jour** (page admin réservée à `Admin`) : recherche de la dernière release GitHub de `Updates:Repository`, toutes les heures ou à la demande. Avant toute installation, la base est copiée dans `<données>/backups/avant-maj-<version>-<date>.db`. Le paquet `LocalMerch-vX.Y.Z-linux-<arch>.tar.gz` doit avoir une empreinte SHA-256 (champ `digest` de GitHub), sinon il est refusé. Les fichiers du dossier de l'application sont remplacés, sauf les `appsettings*.json` existants, puis l'application quitte avec le code 75 pour que systemd la relance. Option « automatique » (`ShopSettings.AutoUpdate`) : installation au démarrage ou entre 3 h et 5 h, pour ne pas couper une vente. L'installation ne fonctionne que sous Linux.
 - Horodatage en UTC en base, affichage en heure locale.
 
 ## Sécurité
@@ -109,6 +113,7 @@ dotnet publish src/LocalMerch.App -c Release -r linux-x64 --self-contained -o pu
 - `Admin:AllowRemote` : `false` par défaut (seuls le loopback et les réseaux privés sont acceptés).
 - `Pos:Rows`, `Pos:Columns`, `Pos:FullScreen` : grille des touches et plein écran.
 - `Pos:FreeAmountVatRate` : taux de TVA des montants libres (20 par défaut).
+- `Updates:Repository` : dépôt GitHub des releases (`propriétaire/nom`), vide = pas de mise à jour.
 - `Culture` : `fr-FR` (format monétaire).
 - Le dossier de données vaut `LOCALMERCH_DATA`, sinon `ApplicationData/LocalMerch` (`~/.config/LocalMerch` sous Linux). Il contient la base `localmerch.db`, qui est migrée automatiquement au démarrage.
 - Sous Linux, ICU (`libicu`) doit être installé pour la culture fr-FR.
@@ -118,3 +123,7 @@ dotnet publish src/LocalMerch.App -c Release -r linux-x64 --self-contained -o pu
 - Code et identifiants en anglais, textes affichés à l'utilisateur en français.
 - Garder le code simple : pas d'interface à une seule implémentation, pas de couche d'abstraction « pour plus tard ».
 - Logique métier (calculs de prix, TVA, stock) couverte par des tests.
+
+## Licence
+
+GNU AGPL v3 ou ultérieure (`AGPL-3.0-or-later`), texte dans `LICENSE.md`. L'admin web étant accessible par le réseau, l'article 13 impose d'offrir le code source à ses utilisateurs.

@@ -31,6 +31,8 @@ public static class Program
         builder.Services.AddDbContext<LocalMerchDb>(o =>
             o.UseSqlite($"Data Source={Path.Combine(dataDir, "localmerch.db")}"));
         builder.Services.AddScoped<Shop>();
+        builder.Services.AddSingleton(new Updater(new HttpClient { Timeout = TimeSpan.FromMinutes(5) },
+            builder.Configuration["Updates:Repository"], AppContext.BaseDirectory, dataDir));
         builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
         {
             o.Cookie.SameSite = SameSiteMode.Strict;
@@ -75,6 +77,7 @@ public static class Program
         app.UseAuthentication();
         app.UseAuthorization();
         AdminApi.Map(app, dataDir);
+        _ = AutoUpdateLoop(app);
 
         if (headless)
         {
@@ -85,6 +88,42 @@ public static class Program
         app.Start();
         PosApp.Run(args, app.Services, app.Configuration.GetSection("Pos").Get<PosOptions>() ?? new());
         app.StopAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>Code de sortie après une mise à jour : le service systemd (Restart=on-failure) relance l'application.</summary>
+    const int RestartExitCode = 75;
+
+    /// <summary>Quitte peu après, le temps que la réponse HTTP parte.</summary>
+    internal static void RestartSoon() => _ = Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => Environment.Exit(RestartExitCode));
+
+    /// <summary>Recherche toutes les heures. Installation automatique (si activée) au démarrage ou entre 3 h et 5 h,
+    /// pour ne pas couper une vente en cours.</summary>
+    static async Task AutoUpdateLoop(WebApplication app)
+    {
+        var updater = app.Services.GetRequiredService<Updater>();
+        for (var startup = true; ; startup = false)
+        {
+            try
+            {
+                if (await updater.CheckAsync() is { PackageUrl: not null } && Updater.CanInstall
+                    && (startup || DateTime.Now.Hour is 3 or 4))
+                {
+                    using var scope = app.Services.CreateScope();
+                    if ((await scope.ServiceProvider.GetRequiredService<LocalMerchDb>().Settings.FindAsync(1))?.AutoUpdate == true)
+                    {
+                        var backup = await updater.InstallAsync();
+                        app.Logger.LogWarning("Mise à jour {Version} installée (base sauvegardée : {Backup}), redémarrage", updater.Installed, backup);
+                        RestartSoon();
+                        return;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                app.Logger.LogError(e, "Mise à jour automatique impossible");
+            }
+            await Task.Delay(TimeSpan.FromHours(1));
+        }
     }
 
     /// <summary>Met la base à jour et garantit un compte administrateur. Au démarrage et après une restauration.</summary>

@@ -52,6 +52,7 @@ public static class AdminApi
     record BrandingInput(string? Title);
     record ExitPasswordInput(string? ExitPassword);
     record PasswordChange(string? Current, string? Next);
+    record AutoUpdateInput(bool Enabled);
 
     const int MaxLogoBytes = 512 * 1024;
     const long MaxBackupBytes = 500L * 1024 * 1024;
@@ -282,6 +283,25 @@ public static class AdminApi
             }
         });
 
+        admin.MapGet("/updates", async (Updater updater, LocalMerchDb db) => UpdateState(updater, await Settings(db)));
+        admin.MapPost("/updates/check", async (Updater updater, LocalMerchDb db) =>
+        {
+            await updater.CheckAsync();
+            return UpdateState(updater, await Settings(db));
+        });
+        admin.MapPut("/updates/auto", async (AutoUpdateInput input, LocalMerchDb db) =>
+        {
+            (await Settings(db)).AutoUpdate = input.Enabled;
+            return await Save(db) ?? Results.NoContent();
+        });
+        admin.MapPost("/updates/install", async (Updater updater) =>
+        {
+            var backup = await updater.InstallAsync();
+            app.Logger.LogWarning("Mise à jour {Version} installée (base sauvegardée : {Backup}), redémarrage", updater.Installed, backup);
+            Program.RestartSoon();
+            return Results.Ok(new { message = $"Version {updater.Installed} installée. La base a été sauvegardée dans {backup}. L'application redémarre." });
+        });
+
         admin.MapDelete("/branding/logo", async (LocalMerchDb db) =>
         {
             var settings = await Settings(db);
@@ -350,6 +370,18 @@ public static class AdminApi
         db.Settings.Add(settings);
         return settings;
     }
+
+    static object UpdateState(Updater u, ShopSettings settings) => new
+    {
+        current = Updater.CurrentVersion,
+        platform = Updater.Platform,
+        canInstall = Updater.CanInstall,
+        autoUpdate = settings.AutoUpdate,
+        lastCheck = u.LastCheck,
+        available = u.Available,
+        error = u.LastError,
+        installed = u.Installed,
+    };
 
     static bool IsLastAdmin(User user, LocalMerchDb db) =>
         user is { Role: Role.Admin, Active: true } && !db.Users.Any(u => u.Id != user.Id && u.Role == Role.Admin && u.Active);

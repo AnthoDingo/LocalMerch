@@ -225,6 +225,9 @@ namespace LocalMerch.Core.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AutoUpdate")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ExitPassword")
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
