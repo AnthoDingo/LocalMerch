@@ -124,6 +124,10 @@
   input[type=file]::file-selector-button { font: inherit; margin-right: 10px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong);
     border-radius: 8px; background: var(--card); color: var(--fg); cursor: pointer; }
   textarea { resize: vertical; }
+  .icon-btn { width: 34px; padding: 0; }
+  .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pager { display: flex; align-items: center; gap: 6px; }
+  .pager .muted { margin-right: 2px; }
 
   /* Formulaires */
   form.grid { display: grid; grid-template-columns: 180px 1fr; gap: 12px 16px; align-items: center; }
@@ -491,11 +495,15 @@ async function keysView() {
         : h('button', { className: 'empty', disabled: !editable, onclick: () => openForm(schemas.keys,
             { page: keyPage, row, column, color: '#3b82f6', action: 'Product' }, render) }, editable ? '+' : ''));
     }
-  const pageInput = h('input', { type: 'number', min: 0, max: 99, value: keyPage, style: 'width:70px',
-    onchange: e => { keyPage = Number(e.target.value) || 0; render(); } });
+  const goTo = n => { keyPage = Math.min(99, Math.max(0, n || 0)); render(); };
+  const pageInput = h('input', { type: 'number', min: 0, max: 99, value: keyPage, ariaLabel: 'Numéro de page',
+    style: 'width:64px; text-align:center', onchange: e => goTo(Number(e.target.value)) });
+  const arrow = (name, label, delta, disabled) =>
+    h('button', { type: 'button', className: 'icon-btn', ariaLabel: label, title: label, disabled, onclick: () => goTo(keyPage + delta) }, icon(name));
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Touches de la caisse'),
-      h('label', { style: 'display:flex; align-items:center; gap:8px' }, h('span', { className: 'muted' }, 'Page'), pageInput)),
+      h('div', { className: 'pager' }, h('span', { className: 'muted' }, 'Page'),
+        arrow('collapse', 'Page précédente', -1, keyPage === 0), pageInput, arrow('expand', 'Page suivante', 1, keyPage === 99))),
     h('p', { className: 'muted' }, editable
       ? 'Cliquez sur une case pour créer ou modifier une touche. La caisse se met à jour immédiatement.'
       : 'Consultation seule : cliquez sur une touche pour voir son réglage.'),
