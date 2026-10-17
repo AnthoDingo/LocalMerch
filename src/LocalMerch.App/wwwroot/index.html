@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalMerch — Administration</title>
+<style>
+  :root { --bg: #f6f7f9; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #2563eb; --card: #fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; align-items: center; gap: 4px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header strong { margin-right: 16px; }
+  nav button { border: 0; background: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
+  nav button.active { background: var(--accent); color: #fff; }
+  main { padding: 16px; max-width: 1200px; margin: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  button, input, select, textarea { font: inherit; }
+  button { padding: 6px 12px; border: 1px solid var(--line); background: var(--card); border-radius: 6px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: #b91c1c; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar h2 { margin: 0 auto 0 0; font-size: 20px; }
+  dialog { border: 1px solid var(--line); border-radius: 8px; width: min(640px, 95vw); }
+  form.grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px; align-items: center; }
+  form.grid input:not([type=checkbox]), form.grid select, form.grid textarea { width: 100%; padding: 6px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; grid-column: 1 / -1; }
+  .lines { grid-column: 1 / -1; }
+  .lines input, .lines select { width: 100%; padding: 4px; }
+  .keys { display: grid; gap: 6px; }
+  .keys button { height: 80px; color: #fff; border: 0; font-weight: 600; white-space: normal; }
+  .keys button.empty { background: #e5e7eb; color: var(--muted); border: 1px dashed var(--line); }
+  #login { max-width: 320px; margin: 15vh auto; background: var(--card); padding: 24px; border-radius: 8px; border: 1px solid var(--line); }
+  #login input { width: 100%; padding: 8px; margin: 8px 0; }
+  .muted { color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<form id="login" class="hidden">
+  <h2>LocalMerch</h2>
+  <label>Mot de passe administrateur<input type="password" name="password" required autofocus></label>
+  <button class="primary">Connexion</button>
+  <p id="login-error" class="muted"></p>
+</form>
+<div id="app" class="hidden">
+  <header><strong>LocalMerch</strong><nav id="nav"></nav><button id="logout" style="margin-left:auto">Déconnexion</button></header>
+  <main id="view"></main>
+</div>
+<dialog id="dialog"></dialog>
+<script>
+const $ = s => document.querySelector(s);
+function h(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k in e && k !== 'list' && k !== 'style') e[k] = v;
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  e.append(...kids.flat(Infinity).filter(k => k != null && k !== false));
+  return e;
+}
+
+async function api(path, method = 'GET', body) {
+  const r = await fetch('/api/' + path, {
+    method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) { showLogin(); throw new Error('Non connecté'); }
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { const j = await r.json(); msg = j.error || Object.entries(j.errors || {}).map(([k, v]) => `${k} : ${v.join(', ')}`).join('\n') || j.title || msg; } catch {}
+    alert(msg);
+    throw new Error(msg);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+const L = {
+  Draft: 'Brouillon', Sent: 'Envoyée', Received: 'Reçue', Cancelled: 'Annulée',
+  Pending: 'En attente', Accepted: 'Accepté', Rejected: 'Refusé',
+  Cash: 'Espèces', Card: 'Carte',
+  In: 'Entrée', Out: 'Sortie', Adjustment: 'Ajustement', Sale: 'Vente', Refund: 'Remboursement', Receipt: 'Réception',
+  Product: 'Produit', VoidLast: 'Annuler la dernière ligne', ClearTicket: 'Vider le ticket',
+  PayCash: 'Payer en espèces', PayCard: 'Payer par carte', GoToPage: 'Aller à la page',
+};
+const money = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const date = v => v ? new Date(v).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+const cache = { products: [], suppliers: [] };
+const nameOf = (list, id) => cache[list].find(x => x.id === id)?.name ?? '';
+const choices = list => () => cache[list].map(x => [x.id, x.name]);
+const enumChoices = (...values) => () => values.map(v => [v, L[v]]);
+async function loadLookups() {
+  [cache.products, cache.suppliers] = await Promise.all([api('products'), api('suppliers')]);
+}
+
+// --- Schémas des écrans « liste + formulaire » ---
+const schemas = {
+  products: {
+    title: 'Produits', path: 'products', newItem: () => ({ vatRate: 20, active: true }),
+    fields: [
+      { name: 'name', label: 'Nom', required: true },
+      { name: 'barcode', label: 'Code-barres' },
+      { name: 'price', label: 'Prix TTC', type: 'number', step: '0.01', min: 0, required: true },
+      { name: 'vatRate', label: 'TVA (%)', type: 'number', step: '0.1', min: 0, max: 100, required: true },
+      { name: 'supplierId', label: 'Fournisseur', type: 'select', options: choices('suppliers') },
+      { name: 'active', label: 'En vente', type: 'checkbox' },
+    ],
+    columns: [['Nom', p => p.name], ['Code-barres', p => p.barcode], ['Prix', p => money(p.price), 'num'],
+      ['TVA', p => p.vatRate + ' %', 'num'], ['Fournisseur', p => nameOf('suppliers', p.supplierId)], ['En vente', p => p.active ? 'Oui' : 'Non']],
+  },
+  suppliers: {
+    title: 'Fournisseurs', path: 'suppliers', newItem: () => ({}),
+    fields: [
+      { name: 'name', label: 'Raison sociale', required: true },
+      { name: 'contactName', label: 'Contact' },
+      { name: 'email', label: 'E-mail', type: 'email' },
+      { name: 'phone', label: 'Téléphone', type: 'tel' },
+      { name: 'address', label: 'Adresse', type: 'textarea' },
+      { name: 'postalCode', label: 'Code postal' },
+      { name: 'city', label: 'Ville' },
+      { name: 'country', label: 'Pays' },
+      { name: 'notes', label: 'Notes', type: 'textarea' },
+    ],
+    columns: [['Nom', s => s.name], ['Contact', s => s.contactName], ['Téléphone', s => s.phone], ['E-mail', s => s.email],
+      ['Adresse', s => [s.address, [s.postalCode, s.city].filter(Boolean).join(' '), s.country].filter(Boolean).join(', ')]],
+  },
+  quotes: {
+    title: 'Devis fournisseurs', path: 'quotes', lines: true, newItem: () => ({ status: 'Pending', lines: [] }),
+    fields: [
+      { name: 'supplierId', label: 'Fournisseur', type: 'select', options: choices('suppliers'), required: true },
+      { name: 'reference', label: 'Référence' },
+      { name: 'validUntil', label: 'Valable jusqu\'au', type: 'date' },
+      { name: 'status', label: 'Statut', type: 'select', options: enumChoices('Pending', 'Rejected'), required: true },
+      { name: 'notes', label: 'Notes', type: 'textarea' },
+    ],
+    columns: [['N°', q => q.id], ['Fournisseur', q => nameOf('suppliers', q.supplierId)], ['Référence', q => q.reference],
+      ['Date', q => date(q.createdAt)], ['Validité', q => q.validUntil], ['Statut', q => L[q.status]], ['Total', q => money(q.total), 'num']],
+    editable: q => q.status !== 'Accepted',
+    actions: q => q.status === 'Pending' && h('button', { onclick: () => act(`quotes/${q.id}/convert`, 'Convertir ce devis en commande ?') }, 'Convertir en commande'),
+  },
+  orders: {
+    title: 'Commandes fournisseurs', path: 'orders', lines: true, newItem: () => ({ status: 'Draft', lines: [] }),
+    fields: [
+      { name: 'supplierId', label: 'Fournisseur', type: 'select', options: choices('suppliers'), required: true },
+      { name: 'status', label: 'Statut', type: 'select', options: enumChoices('Draft', 'Sent', 'Cancelled'), required: true },
+      { name: 'notes', label: 'Notes', type: 'textarea' },
+    ],
+    columns: [['N°', o => o.id], ['Fournisseur', o => nameOf('suppliers', o.supplierId)], ['Date', o => date(o.createdAt)],
+      ['Devis', o => o.quoteId], ['Statut', o => L[o.status]], ['Reçue le', o => date(o.receivedAt)], ['Total', o => money(o.total), 'num']],
+    editable: o => o.status !== 'Received',
+    actions: o => ['Draft', 'Sent'].includes(o.status) && h('button', { onclick: () => act(`orders/${o.id}/receive`, 'Réceptionner la commande et entrer les quantités en stock ?') }, 'Réceptionner'),
+  },
+  keys: {
+    title: 'Touche', path: 'keys',
+    fields: [
+      { name: 'label', label: 'Libellé', required: true },
+      { name: 'color', label: 'Couleur', type: 'color' },
+      { name: 'action', label: 'Action', type: 'select', options: enumChoices('Product', 'VoidLast', 'ClearTicket', 'PayCash', 'PayCard', 'GoToPage'), required: true },
+      { name: 'productId', label: 'Produit', type: 'select', options: choices('products') },
+      { name: 'targetPage', label: 'Page cible', type: 'number', min: 0, max: 99 },
+      { name: 'page', label: 'Page', type: 'number', min: 0, max: 99, required: true },
+      { name: 'row', label: 'Ligne', type: 'number', min: 0, required: true },
+      { name: 'column', label: 'Colonne', type: 'number', min: 0, required: true },
+    ],
+  },
+};
+
+async function act(path, question) {
+  if (!confirm(question)) return;
+  await api(path, 'POST');
+  render();
+}
+
+// --- Formulaire générique ---
+function field(f, value) {
+  const common = { name: f.name, required: f.required };
+  if (f.type === 'select') {
+    return h('select', common, h('option', { value: '' }, '—'),
+      f.options().map(([v, label]) => h('option', { value: v, selected: String(v) === String(value) }, label)));
+  }
+  if (f.type === 'textarea') return h('textarea', { ...common, rows: 3, value: value ?? '' });
+  if (f.type === 'checkbox') return h('input', { ...common, type: 'checkbox', checked: !!value });
+  return h('input', { ...common, type: f.type || 'text', step: f.step, min: f.min, max: f.max, value: value ?? (f.type === 'color' ? '#3b82f6' : '') });
+}
+
+function readField(f, el) {
+  if (f.type === 'checkbox') return el.checked;
+  if (el.value === '') return null;
+  if (f.type === 'number' || (f.type === 'select' && /^\d+$/.test(el.value))) return Number(el.value);
+  return el.value;
+}
+
+function linesEditor(lines) {
+  const body = h('tbody');
+  const addRow = (l = { quantity: 1, unitPrice: 0 }) => {
+    const tr = h('tr', {},
+      h('td', {}, h('select', { required: true, className: 'product' }, h('option', { value: '' }, '—'),
+        cache.products.map(p => h('option', { value: p.id, selected: p.id === l.productId }, p.name)))),
+      h('td', {}, h('input', { type: 'number', min: 1, step: 1, required: true, value: l.quantity, className: 'quantity' })),
+      h('td', {}, h('input', { type: 'number', min: 0, step: '0.01', required: true, value: l.unitPrice, className: 'unitPrice' })),
+      h('td', {}, h('button', { type: 'button', className: 'danger', onclick: () => tr.remove() }, '✕')));
+    body.append(tr);
+  };
+  lines.forEach(addRow);
+  const box = h('div', { className: 'lines' },
+    h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Produit'), h('th', {}, 'Quantité'), h('th', {}, 'Prix unitaire HT'), h('th'))), body),
+    h('button', { type: 'button', onclick: () => addRow() }, '+ Ligne'));
+  box.read = () => [...body.rows].map(tr => ({
+    productId: Number(tr.querySelector('.product').value),
+    quantity: Number(tr.querySelector('.quantity').value),
+    unitPrice: Number(tr.querySelector('.unitPrice').value),
+  }));
+  return box;
+}
+
+function openForm(schema, item, onDone) {
+  const dlg = $('#dialog');
+  const inputs = schema.fields.map(f => [f, field(f, item[f.name])]);
+  const lines = schema.lines && linesEditor(item.lines || []);
+  const form = h('form', { className: 'grid', method: 'dialog' },
+    inputs.map(([f, el]) => [h('label', {}, f.label), el]),
+    lines,
+    h('div', { className: 'actions' },
+      item.id && h('button', { type: 'button', className: 'danger', style: 'margin-right:auto', onclick: async () => {
+        if (!confirm('Supprimer définitivement ?')) return;
+        await api(`${schema.path}/${item.id}`, 'DELETE'); dlg.close(); onDone();
+      } }, 'Supprimer'),
+      h('button', { type: 'button', onclick: () => dlg.close() }, 'Annuler'),
+      h('button', { className: 'primary' }, 'Enregistrer')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const data = { ...item };
+    for (const [f, el] of inputs) data[f.name] = readField(f, el);
+    if (lines) data.lines = lines.read();
+    if (item.id) await api(`${schema.path}/${item.id}`, 'PUT', data);
+    else await api(schema.path, 'POST', data);
+    dlg.close();
+    onDone();
+  });
+  dlg.replaceChildren(h('h3', {}, (item.id ? 'Modifier — ' : 'Nouveau — ') + schema.title), form);
+  dlg.showModal();
+}
+
+function table(columns, rows, extra) {
+  return h('table', {},
+    h('thead', {}, h('tr', {}, columns.map(([t, , cls]) => h('th', { className: cls }, t)), extra && h('th'))),
+    h('tbody', {}, rows.length ? rows.map(r => h('tr', {},
+      columns.map(([, get, cls]) => h('td', { className: cls }, String(get(r) ?? ''))),
+      extra && h('td', { style: 'white-space:nowrap' }, extra(r))))
+      : h('tr', {}, h('td', { colSpan: columns.length + 1, className: 'muted' }, 'Aucun élément.'))));
+}
+
+async function listView(key) {
+  const s = schemas[key];
+  const items = await api(s.path);
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, s.title),
+      h('button', { className: 'primary', onclick: () => openForm(s, s.newItem(), render) }, 'Nouveau')),
+    table(s.columns, items, item => [
+      s.actions?.(item),
+      (s.editable?.(item) ?? true) && h('button', { onclick: () => openForm(s, item, render) }, 'Modifier'),
+    ]),
+  ];
+}
+
+// --- Écrans spécifiques ---
+let keyPage = 0;
+async function keysView() {
+  const [layout, keys] = await Promise.all([api('pos/layout'), api('keys')]);
+  const grid = h('div', { className: 'keys', style: `grid-template-columns: repeat(${layout.columns}, 1fr)` });
+  for (let row = 0; row < layout.rows; row++)
+    for (let column = 0; column < layout.columns; column++) {
+      const k = keys.find(k => k.page === keyPage && k.row === row && k.column === column);
+      grid.append(k
+        ? h('button', { style: `background:${k.color}`, title: L[k.action], onclick: () => openForm(schemas.keys, k, render) }, k.label)
+        : h('button', { className: 'empty', onclick: () => openForm(schemas.keys,
+            { page: keyPage, row, column, color: '#3b82f6', action: 'Product' }, render) }, '+'));
+    }
+  const pageInput = h('input', { type: 'number', min: 0, max: 99, value: keyPage, style: 'width:70px',
+    onchange: e => { keyPage = Number(e.target.value) || 0; render(); } });
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Touches de la caisse'), h('label', {}, 'Page ', pageInput)),
+    h('p', { className: 'muted' }, 'Cliquez sur une case pour créer ou modifier une touche. La caisse se met à jour immédiatement.'),
+    grid,
+  ];
+}
+
+async function stockView() {
+  const [levels, movements] = await Promise.all([api('stock'), api('stock/movements')]);
+  const form = h('form', { className: 'toolbar' },
+    h('select', { name: 'productId', required: true }, h('option', { value: '' }, 'Produit…'),
+      cache.products.map(p => h('option', { value: p.id }, p.name))),
+    h('select', { name: 'type' }, ['In', 'Out', 'Adjustment'].map(t => h('option', { value: t }, L[t]))),
+    h('input', { name: 'quantity', type: 'number', step: 1, required: true, placeholder: 'Quantité', style: 'width:110px' }),
+    h('input', { name: 'reason', placeholder: 'Motif', maxLength: 200 }),
+    h('button', { className: 'primary' }, 'Enregistrer le mouvement'));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const d = new FormData(form);
+    await api('stock/movements', 'POST', {
+      productId: Number(d.get('productId')), type: d.get('type'), quantity: Number(d.get('quantity')), reason: d.get('reason') || null,
+    });
+    render();
+  });
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Stock')),
+    h('p', { className: 'muted' }, 'Entrée / sortie : quantité positive. Ajustement : quantité signée (ex. -2 pour casse).'),
+    form,
+    table([['Produit', l => l.name], ['En vente', l => l.active ? 'Oui' : 'Non'], ['Quantité', l => l.quantity, 'num']], levels),
+    h('h3', {}, 'Derniers mouvements'),
+    table([['Date', m => date(m.at)], ['Produit', m => nameOf('products', m.productId)], ['Type', m => L[m.type]],
+      ['Quantité', m => (m.quantity > 0 ? '+' : '') + m.quantity, 'num'], ['Motif', m => m.reason],
+      ['Origine', m => m.saleId ? `Vente ${m.saleId}` : m.purchaseOrderId ? `Commande ${m.purchaseOrderId}` : '']], movements),
+  ];
+}
+
+async function salesView() {
+  const sales = await api('sales');
+  const refunded = new Set(sales.map(s => s.refundOfSaleId).filter(Boolean));
+  return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Ventes (200 dernières)')),
+    table([['N°', s => s.id], ['Date', s => date(s.at)], ['Paiement', s => L[s.paymentMethod]],
+      ['Détail', s => s.lines.map(l => `${l.quantity} × ${l.label}`).join(', ')],
+      ['Remb.', s => s.refundOfSaleId ? `de ${s.refundOfSaleId}` : refunded.has(s.id) ? 'remboursée' : ''],
+      ['Total', s => money(s.total), 'num']], sales,
+      s => !s.refundOfSaleId && !refunded.has(s.id) &&
+        h('button', { className: 'danger', onclick: () => act(`sales/${s.id}/refund`, `Rembourser la vente n°${s.id} ?`) }, 'Rembourser')),
+  ];
+}
+
+// --- Navigation ---
+const views = {
+  keys: ['Touches', keysView], products: ['Produits', () => listView('products')], suppliers: ['Fournisseurs', () => listView('suppliers')],
+  quotes: ['Devis', () => listView('quotes')], orders: ['Commandes', () => listView('orders')],
+  stock: ['Stock', stockView], sales: ['Ventes', salesView],
+};
+let current = location.hash.slice(1) in views ? location.hash.slice(1) : 'keys';
+
+async function render() {
+  $('#nav').replaceChildren(...Object.entries(views).map(([k, [label]]) =>
+    h('button', { className: k === current ? 'active' : '', onclick: () => { current = k; location.hash = k; render(); } }, label)));
+  await loadLookups();
+  $('#view').replaceChildren(...(await views[current][1]()));
+}
+
+function showLogin() {
+  $('#app').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+}
+
+$('#login').addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: e.target.password.value }) });
+  if (!r.ok) { $('#login-error').textContent = 'Mot de passe incorrect.'; return; }
+  e.target.reset();
+  start();
+});
+$('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); });
+
+async function start() {
+  await api('me');
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  render();
+}
+start().catch(() => {});
+</script>
+</body>
+</html>

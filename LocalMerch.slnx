@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LocalMerch.App/LocalMerch.App.csproj" />
+    <Project Path="src/LocalMerch.Core/LocalMerch.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LocalMerch.Tests/LocalMerch.Tests.csproj" />
+  </Folder>
+</Solution>
