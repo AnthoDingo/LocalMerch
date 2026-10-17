@@ -822,7 +822,13 @@ async function accountView() {
     await api('me/password', 'PUT', { current: form.current.value, next: form.next.value });
     form.reset();
     toast('Mot de passe modifié.');
+    if (me.mustChangePassword) start();
   });
+  if (me.mustChangePassword) return [
+    h('div', { className: 'toolbar' }, h('h2', {}, 'Changement de mot de passe obligatoire')),
+    h('section', { className: 'card pad' },
+      h('p', { className: 'muted' }, 'Le mot de passe initial doit être changé avant de continuer (8 caractères minimum).'), form),
+  ];
   const tone = { Write: 'success', Read: 'info', None: '' };
   return [
     h('div', { className: 'toolbar' }, h('h2', {}, 'Mon compte')),
@@ -900,6 +906,7 @@ $('#login').addEventListener('submit', async e => {
   start();
 });
 $('#account').addEventListener('click', () => {
+  if (me.mustChangePassword) return;
   current = 'account'; location.hash = 'account';
   if (narrow() && !collapsed) { collapsed = true; applyCollapse(); }
   render();
@@ -918,6 +925,11 @@ async function start() {
   current = wanted in views ? wanted : pages[0];
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
+  if (me.mustChangePassword) {
+    $('#nav').replaceChildren();
+    $('#view').replaceChildren(...await accountView());
+    return;
+  }
   if (!current) {
     $('#nav').replaceChildren();
     $('#view').replaceChildren(h('h2', {}, 'Aucun accès'),

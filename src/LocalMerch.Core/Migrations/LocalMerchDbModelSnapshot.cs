@@ -354,6 +354,9 @@ namespace LocalMerch.Core.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("PasswordHash")
                         .HasColumnType("TEXT");
 

@@ -109,7 +109,7 @@ dotnet publish src/LocalMerch.App -c Release -r linux-x64 --self-contained -o pu
 ## Configuration (`appsettings.json`, surchargeable par variables d'environnement `Section__Clé`)
 
 - `Urls` : adresse d'écoute (par défaut `http://0.0.0.0:5080`).
-- `Admin:Password` : mot de passe du compte `admin`, créé quand aucun administrateur actif n'existe. S'il est vide, un mot de passe est généré dans `<données>/admin-password.txt`.
+- `Admin:Password` : mot de passe du compte `admin`, créé quand aucun administrateur actif n'existe. S'il est vide, c'est `admin`. Dans les deux cas, il doit être changé à la première connexion (`User.MustChangePassword`) : d'ici là, l'API refuse tout sauf `/api/me` et `/api/me/password`.
 - `Admin:AllowRemote` : `false` par défaut (seuls le loopback et les réseaux privés sont acceptés).
 - `Pos:Rows`, `Pos:Columns`, `Pos:FullScreen` : grille des touches et plein écran.
 - `Pos:FreeAmountVatRate` : taux de TVA des montants libres (20 par défaut).

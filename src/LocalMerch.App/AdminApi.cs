@@ -18,6 +18,7 @@ public static class Policies
 {
     public const string Admin = nameof(Admin);
     public const string LoginClaim = "login";
+    public const string MustChangePasswordClaim = "mustChangePassword";
     const string AccessClaim = "access:";
 
     public static string For(Page page, Access access) => $"{page}:{access}";
@@ -40,6 +41,7 @@ public static class Policies
         new Claim(ClaimTypes.Name, user.DisplayName),
         new Claim(ClaimTypes.Role, user.Role.ToString()),
         .. Enum.GetValues<Page>().Select(p => new Claim(AccessClaim + p, user.AccessTo(p).ToString())),
+        .. user.MustChangePassword ? [new Claim(MustChangePasswordClaim, "true")] : Array.Empty<Claim>(),
     ], CookieAuthenticationDefaults.AuthenticationScheme));
 }
 
@@ -92,6 +94,10 @@ public static class AdminApi
 
         var api = app.MapGroup("/api").RequireAuthorization().AddEndpointFilter(async (ctx, next) =>
         {
+            // Mot de passe initial : seuls le profil et le changement de mot de passe restent accessibles.
+            if (ctx.HttpContext.User.HasClaim(c => c.Type == Policies.MustChangePasswordClaim)
+                && ctx.HttpContext.Request.Path.Value is not ("/api/me" or "/api/me/password"))
+                return Results.Json(new { error = "Changez d'abord votre mot de passe." }, statusCode: 403);
             try { return await next(ctx); }
             catch (ShopException e) { return Results.BadRequest(new { error = e.Message }); }
         });
@@ -104,6 +110,7 @@ public static class AdminApi
             name = me.Identity?.Name,
             login = me.FindFirstValue(Policies.LoginClaim),
             role = me.FindFirstValue(ClaimTypes.Role),
+            mustChangePassword = me.HasClaim(c => c.Type == Policies.MustChangePasswordClaim),
             access = Enum.GetValues<Page>().ToDictionary(p => p.ToString().ToLowerInvariant(),
                 p => Policies.Allows(me, p, Access.Write) ? Access.Write : Policies.Allows(me, p, Access.Read) ? Access.Read : Access.None),
         });
@@ -118,7 +125,9 @@ public static class AdminApi
                 return Refused("Mot de passe actuel incorrect.")!;
             }
             if (req.Next is not { Length: >= 8 } next) return Refused("Le nouveau mot de passe doit faire au moins 8 caractères.")!;
+            if (next == req.Current) return Refused("Le nouveau mot de passe doit être différent de l'actuel.")!;
             user.PasswordHash = Secret.Hash(next);
+            user.MustChangePassword = false;
             return await Save(db) ?? Results.NoContent();
         });
 

@@ -178,6 +178,8 @@ public class User
     public bool Active { get; set; } = true;
     [JsonIgnore] public string? PasswordHash { get; set; }
     public bool HasPassword => PasswordHash is not null;
+    /// <summary>Compte « admin » initial : tout est bloqué tant que le mot de passe n'a pas été changé.</summary>
+    public bool MustChangePassword { get; set; }
     /// <summary>Droits par page d'un utilisateur Standard (ignorés pour un administrateur).</summary>
     public List<PagePermission> Permissions { get; set; } = [];
 

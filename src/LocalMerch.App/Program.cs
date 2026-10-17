@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using LocalMerch.Core;
 using Microsoft.AspNetCore.Authentication;
@@ -138,24 +137,10 @@ public static class Program
         admin.DisplayName = "Administrateur";
         admin.Role = Role.Admin;
         admin.Active = true;
-        admin.PasswordHash = Secret.Hash(InitialPassword(app.Configuration, dataDir, app.Logger));
+        // « admin » par défaut (ou « Admin:Password »), à changer obligatoirement à la première connexion.
+        admin.PasswordHash = Secret.Hash(app.Configuration["Admin:Password"] is { Length: > 0 } configured ? configured : "admin");
+        admin.MustChangePassword = true;
         db.SaveChanges();
-    }
-
-    /// <summary>Mot de passe du compte « admin » créé au premier démarrage : « Admin:Password »,
-    /// sinon généré et gardé dans le dossier de données.</summary>
-    static string InitialPassword(IConfiguration config, string dataDir, ILogger log)
-    {
-        if (config["Admin:Password"] is { Length: > 0 } configured) return configured;
-
-        var file = Path.Combine(dataDir, "admin-password.txt");
-        if (!File.Exists(file))
-        {
-            File.WriteAllText(file, RandomNumberGenerator.GetHexString(16, lowercase: true));
-            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-        log.LogWarning("Compte « admin » créé, mot de passe dans {File}", file);
-        return File.ReadAllText(file).Trim();
     }
 }
 
